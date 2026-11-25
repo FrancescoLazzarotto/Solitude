@@ -2,6 +2,8 @@
 # Verifica anche che i test non abbiano toccato i salvataggi veri (user://notebook.json).
 param([switch]$SkipNative)
 . "$PSScriptRoot\common.ps1"
+# I comandi nativi (cargo, godot) scrivono su stderr anche quando va tutto bene: non trattarlo come errore.
+$ErrorActionPreference = 'Continue'
 
 $failed = $false
 

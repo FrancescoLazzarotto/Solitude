@@ -1,6 +1,7 @@
 # Benchmark: N giri (default 3) di tests/bench.gd, riporta la MEDIANA (il PC e' rumoroso).
 param([int]$Runs = 3)
 . "$PSScriptRoot\common.ps1"
+$ErrorActionPreference = 'Continue'
 
 $godot = Get-GodotExe -Console
 $avg = @(); $low = @(); $dc = @(); $worst = @()

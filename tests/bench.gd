@@ -4,6 +4,7 @@ extends SceneTree
 ## Stampa FPS medi, 1% low, draw call, primitive e tempi di processo/fisica.
 
 const WARMUP_FRAMES := 90
+const ROUTE_LAPS := 3
 
 var main: Node
 var p: CharacterBody3D
@@ -15,6 +16,8 @@ var t_physics: Array[float] = []
 var _last_us := 0
 var _frame := 0
 var _recording := false
+var _immortal := false
+var _phase := "avvio"
 
 
 func _initialize() -> void:
@@ -27,7 +30,19 @@ func _initialize() -> void:
 
 func _tick() -> void:
 	await process_frame
+	if _immortal:
+		p._invuln_time = maxf(p._invuln_time, 0.5)
 	var now := Time.get_ticks_usec()
+	if _last_us > 0 and (now - _last_us) > 120000:
+		var st := []
+		for e in main.enemies:
+			st.append("%s hp=%d" % [e.State.keys()[e.state], e.hp])
+		print("BENCH SPIKE %.0f ms  frame=%d  fase=%s  player=%s pos=%s  nemici=%s" % [(now - _last_us) / 1000.0, _frame, _phase, p.State.keys()[p.state], p.global_position.snappedf(0.1), st])
+		print("BENCH SPIKE-MONITOR process=%.1fms physics=%.1fms navigation=%.1fms draw_calls=%d objects=%d nodes=%d orphan=%d phys_active_objects=%d phys_pairs=%d time_scale=%.2f" % [
+			Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0, Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0,
+			Performance.get_monitor(Performance.TIME_NAVIGATION_PROCESS) * 1000.0, Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+			Performance.get_monitor(Performance.OBJECT_COUNT), Performance.get_monitor(Performance.OBJECT_NODE_COUNT), Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT),
+			Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS), Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS), Engine.time_scale])
 	if _recording and _last_us > 0:
 		frame_ms.append((now - _last_us) / 1000.0)
 		if _frame % 5 == 0:
@@ -52,27 +67,40 @@ func _run() -> void:
 	# Riscaldamento (compilazione shader, cache). Il Main è pronto dopo il primo frame.
 	await _tick()
 	p = main.player
-	p.max_hp = 9999
-	p.hp = 9999
+	_immortal = true   # NON gonfiare max_hp: l'HUD costruirebbe un nodo per ogni cuore (era un falso rallentamento)
+	# Il caricamento audio (thread di Rust, ~1-2 s di CPU) avviene una volta sola all'avvio:
+	# non deve sporcare la misura del gioco a regime.
+	var audio := root.get_node("Audio")
+	var guard := 0
+	while audio._native != null and not audio.available and guard < 3000:
+		await _tick()
+		guard += 1
+	_phase = "riscaldamento"
 	for i in range(WARMUP_FRAMES):
 		await _tick()
 	_recording = true
-	# 1) cortile: giro in tondo
-	await _hold(["move_left"], 60)
-	await _hold(["move_down"], 60)
-	await _hold(["move_right"], 60)
-	# 2) rampa e altopiano, nemici attivi
-	p.teleport_to(Vector3(0, 0.05, -1))
-	await _hold(["move_up", "move_right"], 115)
-	# 3) combattimento: attacchi e rotoli ripetuti vicino ai guardiani
-	for i in range(6):
-		await _hold(["attack"], 2)
-		await _hold(["move_left"], 25)
-		await _hold(["roll", "move_right"], 3)
-		await _hold(["move_right"], 25)
-	# 4) torna al santuario
-	p.teleport_to(Vector3(0, 0.05, 7.5))
-	await _hold(["move_down"], 40)
+	for lap in range(ROUTE_LAPS):
+		_phase = "1-cortile"
+		p.teleport_to(Vector3(0, 0.05, 6))
+		await _hold(["move_left"], 60)
+		await _hold(["move_down"], 60)
+		await _hold(["move_right"], 60)
+		_phase = "2-rampa"
+		p.teleport_to(Vector3(0, 0.05, -1))
+		await _hold(["move_up", "move_right"], 115)
+		_phase = "3-combattimento"
+		for i in range(6):
+			_phase = "3-attacco#%d" % i
+			await _hold(["attack"], 2)
+			_phase = "3-sinistra#%d" % i
+			await _hold(["move_left"], 25)
+			_phase = "3-rotolo#%d" % i
+			await _hold(["roll", "move_right"], 3)
+			_phase = "3-destra#%d" % i
+			await _hold(["move_right"], 25)
+		_phase = "4-santuario"
+		p.teleport_to(Vector3(0, 0.05, 7.5))
+		await _hold(["move_down"], 40)
 	_recording = false
 	_report()
 	quit()
