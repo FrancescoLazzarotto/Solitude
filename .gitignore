@@ -1,0 +1,14 @@
+# Godot
+.godot/
+export_presets.cfg
+*.translation
+
+# Build nativo (la DLL si rigenera con tools/build.ps1)
+bin/*.dll
+native/target/
+
+# Sistema / editor
+.vs/
+.vscode/
+Thumbs.db
+desktop.ini
