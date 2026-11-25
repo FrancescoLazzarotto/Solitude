@@ -1,7 +1,10 @@
 //! Involucro GDExtension: espone `carto_core` a Godot. Qui NON c'e' logica di gioco,
 //! solo conversioni di tipo e un po' di parallelismo.
 
-use carto_core::{dsp::SAMPLE_RATE, synth, wav};
+use carto_core::{dsp::SAMPLE_RATE, level, synth, wav};
+use std::collections::BTreeSet;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use godot::classes::audio_stream_wav::{Format, LoopMode};
 use godot::classes::AudioStreamWav;
 use godot::prelude::*;
@@ -27,7 +30,20 @@ unsafe impl ExtensionLibrary for CartoExtension {}
 #[class(base=RefCounted, init)]
 struct CartoAudio {
     base: Base<RefCounted>,
-    job: Option<std::thread::JoinHandle<Rendered>>,
+    job: Option<std::thread::JoinHandle<Option<Rendered>>>,
+    /// Segnala al thread di rendering di fermarsi (quando l'oggetto viene distrutto).
+    cancel: Arc<AtomicBool>,
+}
+
+impl Drop for CartoAudio {
+    /// Se il gioco chiude mentre il rendering e' in corso, il thread va fermato E atteso: altrimenti
+    /// Godot scarica la DLL mentre il thread sta ancora eseguendo codice al suo interno (crash all'uscita).
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Relaxed);
+        if let Some(job) = self.job.take() {
+            let _ = job.join();
+        }
+    }
 }
 
 /// Risultato di un rendering in background: solo dati, nessun oggetto Godot.
@@ -106,12 +122,13 @@ impl CartoAudio {
             return;
         }
         let (seed, secs) = (seed as u64, music_secs as f32);
+        let cancel = Arc::clone(&self.cancel);
         self.job = Some(std::thread::spawn(move || {
             carto_core::sys::background_priority();
             let t0 = std::time::Instant::now();
             let sfx = render_bank_pcm(seed);
-            let m = synth::render_ambient(seed, secs);
-            Rendered { sfx, music: wav::pcm16_stereo(&m.l, &m.r), ms: t0.elapsed().as_millis() as i64 }
+            let m = synth::render_ambient_cancellable(seed, secs, &cancel)?;
+            Some(Rendered { sfx, music: wav::pcm16_stereo(&m.l, &m.r), ms: t0.elapsed().as_millis() as i64 })
         }));
     }
 
@@ -130,9 +147,13 @@ impl CartoAudio {
             return out;
         }
         let Some(job) = self.job.take() else { return out };
-        let Ok(r) = job.join() else {
-            godot_error!("CartoAudio: il thread di rendering e' andato in panic");
-            return out;
+        let r = match job.join() {
+            Ok(Some(r)) => r,
+            Ok(None) => return out, // annullato
+            Err(_) => {
+                godot_error!("CartoAudio: il thread di rendering e' andato in panic");
+                return out;
+            }
         };
         let mut sfx = VarDictionary::new();
         for (name, pcm) in &r.sfx {
@@ -188,4 +209,73 @@ fn make_stream(pcm: &[u8], stereo: bool, looped: bool) -> Gd<AudioStreamWav> {
         s.set_loop_end(frames);
     }
     s
+}
+
+
+/// Validatore del livello: stessa logica testata da `cargo test`, esposta a Godot.
+///
+/// ```gdscript
+/// var v = CartoLevel.new()
+/// var err: String = v.validate(json_text)          # "" se il livello e' ben formato
+/// var report: Dictionary = v.analyze(json_text)    # fasi di progressione e oggetti raggiungibili
+/// var tops: PackedFloat32Array = v.heights(json_text, PackedStringArray(["lantern"]), points)
+/// ```
+#[derive(GodotClass)]
+#[class(base=RefCounted, init)]
+struct CartoLevel {
+    base: Base<RefCounted>,
+}
+
+#[godot_api]
+impl CartoLevel {
+    /// Stringa vuota se il livello e' valido, altrimenti il motivo.
+    #[func]
+    fn validate(&self, json: GString) -> GString {
+        match level::Level::from_json(&json.to_string()) {
+            Ok(_) => GString::new(),
+            Err(e) => GString::from(e.as_str()),
+        }
+    }
+
+    /// `{ok, error, stages: [{keys: PackedStringArray, items: PackedStringArray, cells: int}]}`
+    #[func]
+    fn analyze(&self, json: GString) -> VarDictionary {
+        let mut out = VarDictionary::new();
+        let lvl = match level::Level::from_json(&json.to_string()) {
+            Ok(l) => l,
+            Err(e) => {
+                out.set(&"ok".to_variant(), &false.to_variant());
+                out.set(&"error".to_variant(), &GString::from(e.as_str()).to_variant());
+                return out;
+            }
+        };
+        let analysis = level::analyze(&lvl);
+        let mut stages = VarArray::new();
+        for st in &analysis.stages {
+            let mut d = VarDictionary::new();
+            let keys: PackedStringArray = st.keys.iter().map(|k| GString::from(k.as_str())).collect();
+            let items: PackedStringArray = st.items.iter().map(|k| GString::from(k.as_str())).collect();
+            d.set(&"keys".to_variant(), &keys.to_variant());
+            d.set(&"items".to_variant(), &items.to_variant());
+            d.set(&"cells".to_variant(), &(st.reachable_cells as i64).to_variant());
+            stages.push(&d.to_variant());
+        }
+        out.set(&"ok".to_variant(), &true.to_variant());
+        out.set(&"error".to_variant(), &GString::new().to_variant());
+        out.set(&"stages".to_variant(), &stages.to_variant());
+        out
+    }
+
+    /// Quota della superficie calpestabile del modello nei punti (x, z) dati; NaN dove c'e' il vuoto.
+    /// Serve a confrontare il modello del validatore con la fisica vera del motore.
+    #[func]
+    fn heights(&self, json: GString, keys: PackedStringArray, points: PackedVector2Array) -> PackedFloat32Array {
+        let Ok(lvl) = level::Level::from_json(&json.to_string()) else {
+            return PackedFloat32Array::new();
+        };
+        let keys: BTreeSet<String> = keys.as_slice().iter().map(|k| k.to_string()).collect();
+        let grid = level::build_grid(&lvl, &keys);
+        let tops: Vec<f32> = points.as_slice().iter().map(|p| grid.top_at(p.x, p.y).unwrap_or(f32::NAN)).collect();
+        PackedFloat32Array::from(tops.as_slice())
+    }
 }

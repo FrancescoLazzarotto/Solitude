@@ -4,6 +4,7 @@
 use crate::dsp::*;
 use crate::rng::Rng;
 use std::f32::consts::TAU;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// Nomi di tutti gli effetti disponibili.
 pub const SFX_NAMES: &[&str] = &[
@@ -504,13 +505,17 @@ const CHORDS: [[f32; 6]; 4] = [
     [33.0, 45.0, 52.0, 57.0, 62.0, 64.0],
 ];
 
-fn pad_voice(freq: f32, dur: f32, attack: f32, release: f32, phase: f32, cutoff: f32, lfo_hz: f32) -> Vec<f32> {
+#[allow(clippy::too_many_arguments)]
+fn pad_voice(freq: f32, dur: f32, attack: f32, release: f32, phase: f32, cutoff: f32, lfo_hz: f32, cancel: &AtomicBool) -> Vec<f32> {
     let n = secs(dur + release);
     let mut out = make(n);
     let mut a = Osc::new(phase);
     let mut b = Osc::new(phase + 0.37);
     let mut f = Svf::new(cutoff, 0.7);
     for (i, s) in out.iter_mut().enumerate() {
+        if i & 0x3FFF == 0 && cancel.load(Ordering::Relaxed) {
+            return out;
+        }
         let t = i as f32 / SR;
         let v = a.saw(freq * 1.002) + b.saw(freq * 0.998);
         let lfo = 0.75 + 0.25 * (TAU * lfo_hz * t + phase * 6.0).sin();
@@ -526,7 +531,7 @@ fn pad_voice(freq: f32, dur: f32, attack: f32, release: f32, phase: f32, cutoff:
 
 /// Un accordo del pad: tre buffer (sinistra, destra, mandata al riverbero) che iniziano a `section * ci`.
 /// Il seme dipende solo da (seed, ci): il risultato e' identico anche se i thread finiscono in ordine diverso.
-fn render_chord(seed: u64, ci: usize, section: f32) -> (usize, Vec<f32>, Vec<f32>, Vec<f32>) {
+fn render_chord(seed: u64, ci: usize, section: f32, cancel: &AtomicBool) -> (usize, Vec<f32>, Vec<f32>, Vec<f32>) {
     let mut rng = Rng::new(seed ^ (0xC40D + ci as u64 * 0x9E37_79B9));
     let start = secs(section * ci as f32);
     let (mut l, mut r, mut send) = (Vec::new(), Vec::new(), Vec::new());
@@ -538,8 +543,8 @@ fn render_chord(seed: u64, ci: usize, section: f32) -> (usize, Vec<f32>, Vec<f32
         let dur = section + 3.0;
         let seed_phase = rng.f32();
         let lfo = rng.range(0.05, 0.13);
-        let vl = pad_voice(hz, dur, 3.5, 5.5, seed_phase, cutoff, lfo);
-        let vr = pad_voice(hz, dur, 3.5, 5.5, seed_phase + 0.41 + ni as f32 * 0.07, cutoff, lfo * 1.1);
+        let vl = pad_voice(hz, dur, 3.5, 5.5, seed_phase, cutoff, lfo, cancel);
+        let vr = pad_voice(hz, dur, 3.5, 5.5, seed_phase + 0.41 + ni as f32 * 0.07, cutoff, lfo * 1.1, cancel);
         mix_into(&mut l, &vl, 0, gain);
         mix_into(&mut r, &vr, 0, gain);
         if !low {
@@ -552,6 +557,12 @@ fn render_chord(seed: u64, ci: usize, section: f32) -> (usize, Vec<f32>, Vec<f32
 
 /// Musica ambientale a loop. `loop_secs` e' la durata del ciclo (ogni accordo ne occupa un quarto).
 pub fn render_ambient(seed: u64, loop_secs: f32) -> Stereo {
+    render_ambient_cancellable(seed, loop_secs, &AtomicBool::new(false)).expect("mai annullato")
+}
+
+/// Come `render_ambient`, ma si interrompe (ritornando `None`) appena `cancel` diventa vero.
+/// Serve a chiudere il gioco subito, senza aspettare un rendering di un secondo.
+pub fn render_ambient_cancellable(seed: u64, loop_secs: f32, cancel: &AtomicBool) -> Option<Stereo> {
     let mut rng = Rng::new(seed ^ 0xA3B1_E27);
     let loop_n = secs(loop_secs);
     let tail_secs = 10.0;
@@ -568,12 +579,15 @@ pub fn render_ambient(seed: u64, loop_secs: f32) -> Stereo {
             .map(|ci| {
                 s.spawn(move || {
                     crate::sys::background_priority();
-                    render_chord(seed, ci, section)
+                    render_chord(seed, ci, section, cancel)
                 })
             })
             .collect();
         handles.into_iter().map(|h| h.join().expect("thread del pad")).collect()
     });
+    if cancel.load(Ordering::Relaxed) {
+        return None;
+    }
     for (start, l, r, sd) in &chords {
         mix_into(&mut dry_l, l, *start, 1.0);
         mix_into(&mut dry_r, r, *start, 1.0);
@@ -603,6 +617,9 @@ pub fn render_ambient(seed: u64, loop_secs: f32) -> Stereo {
     let mut pink = Pink::default();
     let mut wf = Svf::new(500.0, 0.6);
     for i in 0..total {
+        if i & 0x3FFF == 0 && cancel.load(Ordering::Relaxed) {
+            return None;
+        }
         let ts = i as f32 / SR;
         if i % 32 == 0 {
             wf.set(450.0 + 300.0 * (TAU * 0.043 * ts).sin(), 0.6);
@@ -615,6 +632,9 @@ pub fn render_ambient(seed: u64, loop_secs: f32) -> Stereo {
     // Riverbero lungo sul segnale di mandata.
     let mut rv = Reverb::new(0.93, 0.55);
     for i in 0..total {
+        if i & 0x3FFF == 0 && cancel.load(Ordering::Relaxed) {
+            return None;
+        }
         let (rl, rr) = rv.process(send[i]);
         dry_l[i] += rl * 0.9;
         dry_r[i] += rr * 0.9;
@@ -630,7 +650,7 @@ pub fn render_ambient(seed: u64, loop_secs: f32) -> Stereo {
 
     let mut st = Stereo { l, r };
     finalize_stereo(&mut st, 0.7);
-    st
+    Some(st)
 }
 
 fn finalize_stereo(st: &mut Stereo, target_peak: f32) {
@@ -714,6 +734,17 @@ mod tests {
         // stereo vero: i due canali non sono identici
         let diff = m.l.iter().zip(m.r.iter()).map(|(a, b)| (a - b).abs()).sum::<f32>() / m.l.len() as f32;
         assert!(diff > 0.002, "canali troppo simili ({diff})");
+    }
+
+    #[test]
+    fn ambient_render_can_be_cancelled_quickly() {
+        let cancel = AtomicBool::new(true);
+        let t = std::time::Instant::now();
+        assert!(render_ambient_cancellable(1, 64.0, &cancel).is_none());
+        assert!(t.elapsed().as_millis() < 300, "l'annullamento deve essere quasi immediato: {:?}", t.elapsed());
+        // Non annullato: stesso risultato di render_ambient.
+        let a = render_ambient_cancellable(3, 8.0, &AtomicBool::new(false)).unwrap();
+        assert_eq!(a.l, render_ambient(3, 8.0).l);
     }
 
     #[test]
