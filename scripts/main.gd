@@ -356,13 +356,14 @@ func _build_player() -> void:
 
 
 func _build_enemies() -> void:
-	for p: Array in _props["enemies"]:
-		_spawn_enemy(LevelData.v3(p))
+	for e: Dictionary in _props["enemies"]:
+		_spawn_enemy(LevelData.v3(e["pos"]), str(e.get("kind", "guardian")))
 
 
-func _spawn_enemy(pos: Vector3) -> CharacterBody3D:
+func _spawn_enemy(pos: Vector3, kind := "guardian") -> CharacterBody3D:
 	var e := CharacterBody3D.new()
 	e.set_script(EnemyScript)
+	e.kind = kind
 	e.position = pos
 	e.target = player
 	add_child(e)
