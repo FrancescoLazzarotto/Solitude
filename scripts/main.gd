@@ -10,6 +10,7 @@ const HudScript := preload("res://scripts/hud.gd")
 const Paths := preload("res://scripts/paths.gd")
 const NotebookScript := preload("res://scripts/notebook.gd")
 const LevelData := preload("res://scripts/level_data.gd")
+const SaveGame := preload("res://scripts/save_game.gd")
 
 const LEVEL_PATH := "res://levels/slice.json"
 
@@ -29,6 +30,7 @@ var enemies: Array[CharacterBody3D] = []
 var checkpoint_pos := Vector3.ZERO
 var has_lantern := false
 var gate_open := false
+var chests_opened: Array[String] = []
 
 var shrine_it: Node3D
 var stone_it: Node3D
@@ -70,6 +72,7 @@ func _ready() -> void:
 	_build_enemies()
 	_build_camera()
 	_build_ui()
+	_load_game()
 
 
 # ===========================================================================
@@ -488,6 +491,7 @@ func use_shrine() -> void:
 	reset_enemies()
 	player.heal_full()
 	hud.toast("Santuario: salute ripristinata.\nI nemici sono tornati. Se cadi, ripartirai da qui.", 4.5)
+	_autosave()
 	Audio.play(&"shrine_rest", _shrine_pos)
 	Fx.burst(_shrine_pos + Vector3(0, 1.9, 0), Color(0.4, 1.0, 0.9), 22, 0.8)
 	Audio.play(&"heal", player.global_position, -4.0)
@@ -498,12 +502,14 @@ func use_shrine() -> void:
 
 func open_lantern_chest() -> void:
 	_open_chest_visual(chest1_it)
+	chests_opened.append("lantern")
 	has_lantern = true
 	player.set_lantern(true)
 	hud.toast("Hai trovato la LANTERNA.\nOra vedi i sentieri che l'oscurità nascondeva.", 5.0)
 	Audio.play(&"chest_open", chest1_it.global_position)
 	Audio.play(&"lantern_on", player.global_position, -3.0)
 	_reveal_bridge()
+	_autosave()
 
 
 func _reveal_bridge() -> void:
@@ -516,11 +522,13 @@ func _reveal_bridge() -> void:
 
 func open_heart_chest() -> void:
 	_open_chest_visual(chest2_it)
+	chests_opened.append("heart")
 	player.add_max_hp(1)
 	player.add_max_stamina(20.0)
 	hud.toast("Cuore di rame: salute massima +1, stamina massima +20.", 5.0)
 	Audio.play(&"chest_open", chest2_it.global_position)
 	Audio.play(&"item_get", player.global_position, -3.0)
+	_autosave()
 
 
 func pull_lever() -> void:
@@ -538,6 +546,80 @@ func pull_lever() -> void:
 	hud.toast("Un cancello si apre, lontano.\nUna scorciatoia verso il santuario.", 4.5)
 	Audio.play(&"lever", lever_it.global_position)
 	Audio.play(&"gate_open", _gate_body.global_position, 0.0)
+	_autosave()
+
+
+# ===========================================================================
+# SALVATAGGIO
+# ===========================================================================
+
+func get_save_data() -> Dictionary:
+	var keys: Array[String] = []
+	if has_lantern:
+		keys.append("lantern")
+	if gate_open:
+		keys.append("lever")
+	return {
+		"checkpoint": [checkpoint_pos.x, checkpoint_pos.y, checkpoint_pos.z],
+		"keys": keys,
+		"chests_opened": chests_opened,
+		"max_hp": player.max_hp,
+		"max_stamina": player.max_stamina,
+		"max_flasks": player.max_flasks,
+	}
+
+
+func _autosave() -> void:
+	if SaveGame.enabled():
+		SaveGame.write(get_save_data())
+
+
+func _load_game() -> void:
+	if not SaveGame.enabled():
+		return
+	var d := SaveGame.read()
+	if not d.is_empty():
+		apply_save_data(d)
+
+
+## Ripristina i progressi. Gli effetti sono istantanei (niente animazioni di apertura).
+func apply_save_data(d: Dictionary) -> void:
+	var cp: Array = d.get("checkpoint", [])
+	if cp.size() == 3:
+		checkpoint_pos = LevelData.v3(cp)
+	player.max_hp = int(d.get("max_hp", player.max_hp))
+	player.max_stamina = float(d.get("max_stamina", player.max_stamina))
+	player.max_flasks = int(d.get("max_flasks", player.max_flasks))
+	var keys: Array = d.get("keys", [])
+	if keys.has("lantern"):
+		has_lantern = true
+		player.set_lantern(true)
+		_bridge_col.disabled = false
+		_bridge_mesh.visible = true
+		_bridge_mat.albedo_color.a = 0.8
+	for id: Variant in d.get("chests_opened", []):
+		var it: Node3D = chest1_it if str(id) == "lantern" else chest2_it
+		_open_chest_instant(it)
+		if str(id) not in chests_opened:
+			chests_opened.append(str(id))
+	if keys.has("lever"):
+		gate_open = true
+		lever_it.set("enabled", false)
+		gate_hint_it.set("enabled", false)
+		(lever_it.get_parent().get_node("LeverPivot") as Node3D).rotation_degrees.x = -30.0
+		_gate_col.disabled = true
+		_gate_body.position.y = -2.8
+	player.heal_full()
+	player.teleport_to(checkpoint_pos)
+	_snap_camera()
+	_sync_hud()
+
+
+func _open_chest_instant(it: Node3D) -> void:
+	var root := it.get_parent() as Node3D
+	(root.get_node("LidPivot") as Node3D).rotation_degrees.x = -105.0
+	(root.get_node("ChestLight") as OmniLight3D).light_energy = 0.4
+	it.set("enabled", false)
 
 
 # ===========================================================================
