@@ -43,8 +43,16 @@ Il portatile e' termicamente rumoroso (146-197 fps tra giri): **confrontare semp
   - **il modello coincide con la fisica**: `tests/level_test.gd` confronta le quote del modello con i raycast del motore su 1400 punti (stato iniziale e dopo lanterna+leva): 0 differenze;
   - dimostrato dal validatore: cuore e leva irraggiungibili senza lanterna; corridoio sigillato dal cortile finche' la leva non e' tirata; la scorciatoia riporta al santuario anche senza ponte; nessun oggetto orfano. **Test di mutazione**: senza staccionata vede l'aggiramento, con ponte sempre attivo vede il cuore raggiungibile;
   - **fusione delle mesh NON fatta, di proposito**: 93 draw call a 183 fps non la giustificano. Se servira' (livelli molto piu' grandi), con benchmark di stress prima/dopo.
-- [ ] **M3 feeling**: particelle d'impatto, screen shake, pathfinding nemici (NavigationServer3D), fiaschetta di cura, altri due tipi di nemico, dissolvenza d'avvio.
+- [x] **M3 feeling e nemici** (tranne il pathfinding, vedi sotto):
+  - **Fx** (autoload): scintille d'impatto con 8 `CPUParticles3D` riusate a rotazione + scuotimento camera (ampiezza = trauma^2, decade in ~1 s);
+  - **fiaschetta di cura** (Q / RB): 3 scorte, +2 cuori dopo 0.7 s vulnerabili (si cammina piano), un colpo la interrompe senza consumarla, il santuario la ricarica;
+  - **bruto**: 6 PV, lento, carica di 1.0 s, colpo da 2 cuori in raggio 2.4, si stordisce poco; **sentinella**: torretta immobile con linea di tiro, 0.85 s di mira, proiettile schivabile (spostandosi o con le i-frames del rotolo), bloccata dai muri (linea di vista);
+  - i nemici hanno un `kind` nei dati del livello (`guardian`/`brute`/`sentinel`), validato da Rust; la sentinella sta sull'altopiano, il bruto sulla terrazza del cuore;
+  - dissolvenza dal nero all'avvio; suoni `drink` e `shot` (28 effetti);
+  - **pathfinding NON fatto, di proposito**: i nemici vanno dritti e scivolano lungo i muri (`move_and_slide`); si incastrano solo in concavita' profonde, che il livello attuale non ha. Se i livelli futuri ne avranno: `AStarGrid2D` del motore alimentato dalla griglia del validatore Rust.
+  - test: `feel_test` (scintille, trauma, fiaschetta in 6 scenari), `enemy_kinds_test` (carica, danno, schivata, sentinella: mira/sparo/schivata/i-frames/muro in mezzo).
 - [ ] **M4 mondo**: piu' zone, segreti, pagine di lore nel taccuino, boss.
+  - **Prossimi passi esatti**: (1) estendere `levels/slice.json` (o nuovo `levels/world.json`) con una seconda area collegata alla prima da una scorciatoia e un oggetto-chiave nuovo (es. rampino/lanterna 2); (2) estendere `analyze` in `level.rs` con nuove chiavi e aggiungere il test di progressione corrispondente PRIMA di costruire l'area; (3) pagine di lore: oggetti raccoglibili che si aggiungono al taccuino (`notebook.gd`), salvati in `user://`; (4) salvataggio dei progressi (chiavi, forzieri aperti, checkpoint) in `Paths.user_file("save.json")` con test di round-trip; (5) boss (stessa macchina a stati di `enemy.gd`, tipo `boss` con fasi).
 
 ## Note tecniche
 - gdext (`godot` crate) `=0.5.6` carica correttamente in Godot 4.7.2 (API 4.6, runtime 4.7.2).
