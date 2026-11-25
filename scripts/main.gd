@@ -419,6 +419,7 @@ func _process(delta: float) -> void:
 	var target_pos := player.get_global_transform_interpolated().origin + Vector3(0, 0.8, 0)
 	_cam_focus = _cam_focus.lerp(target_pos, 1.0 - exp(-CAMERA_FOLLOW * delta))
 	camera.global_position = _cam_focus + _cam_offset
+	Audio.set_listener_position(player.global_position + Vector3(0, 1.0, 0))
 	_update_interaction()
 
 
@@ -428,6 +429,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _update_interaction() -> void:
+	var previous := _nearest
 	_nearest = null
 	if not _dying and not bool(player.call("is_dead")):
 		var best := INF
@@ -443,6 +445,8 @@ func _update_interaction() -> void:
 				best = dist
 				_nearest = n as Node3D
 	hud.set_prompt("[E] " + str(_nearest.get("prompt")) if _nearest != null else "")
+	if _nearest != null and _nearest != previous:
+		Audio.play(&"blip", null, -14.0)
 
 
 func _on_player_died() -> void:
@@ -483,6 +487,8 @@ func use_shrine() -> void:
 	reset_enemies()
 	player.heal_full()
 	hud.toast("Santuario: salute ripristinata.\nI nemici sono tornati. Se cadi, ripartirai da qui.", 4.5)
+	Audio.play(&"shrine_rest", SHRINE_POS)
+	Audio.play(&"heal", player.global_position, -4.0)
 	var tw := create_tween()
 	tw.tween_property(_shrine_light, "light_energy", 5.0, 0.2)
 	tw.tween_property(_shrine_light, "light_energy", 1.6, 0.8)
@@ -493,6 +499,8 @@ func open_lantern_chest() -> void:
 	has_lantern = true
 	player.set_lantern(true)
 	hud.toast("Hai trovato la LANTERNA.\nOra vedi i sentieri che l'oscurità nascondeva.", 5.0)
+	Audio.play(&"chest_open", chest1_it.global_position)
+	Audio.play(&"lantern_on", player.global_position, -3.0)
 	_reveal_bridge()
 
 
@@ -501,6 +509,7 @@ func _reveal_bridge() -> void:
 	_bridge_mesh.visible = true
 	var tw := create_tween()
 	tw.tween_property(_bridge_mat, "albedo_color:a", 0.8, 1.5)
+	Audio.play(&"bridge_reveal", Vector3(0, 2, -13.5))
 
 
 func open_heart_chest() -> void:
@@ -508,6 +517,8 @@ func open_heart_chest() -> void:
 	player.add_max_hp(1)
 	player.add_max_stamina(20.0)
 	hud.toast("Cuore di rame: salute massima +1, stamina massima +20.", 5.0)
+	Audio.play(&"chest_open", chest2_it.global_position)
+	Audio.play(&"item_get", player.global_position, -3.0)
 
 
 func pull_lever() -> void:
@@ -523,6 +534,8 @@ func pull_lever() -> void:
 	tw.tween_interval(0.4)
 	tw.tween_property(_gate_body, "position:y", -2.8, 1.4).set_trans(Tween.TRANS_QUAD)
 	hud.toast("Un cancello si apre, lontano.\nUna scorciatoia verso il santuario.", 4.5)
+	Audio.play(&"lever", lever_it.global_position)
+	Audio.play(&"gate_open", _gate_body.global_position, 0.0)
 
 
 # ===========================================================================

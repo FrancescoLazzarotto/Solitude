@@ -164,6 +164,10 @@ func _enter(new_state: State) -> void:
 	_t = 0.0
 	_hit_done = false
 	_warn.visible = new_state == State.WINDUP
+	if new_state == State.WINDUP:
+		Audio.play(&"enemy_windup", global_position, -2.0)
+	elif new_state == State.ATTACK:
+		Audio.play(&"enemy_lunge", global_position)
 	if new_state != State.WINDUP:
 		_eye_mat.emission_energy_multiplier = 2.0
 		_visual.scale = Vector3.ONE
@@ -193,12 +197,14 @@ func take_damage(amount: int, from_pos: Vector3) -> void:
 	if hp <= 0:
 		_die()
 		return
+	Audio.play(&"enemy_hurt", global_position)
 	_enter(State.STAGGER)
 
 
 func _die() -> void:
 	alive = false
 	state = State.DEAD
+	Audio.play(&"enemy_die", global_position)
 	_warn.visible = false
 	_col.set_deferred("disabled", true)
 	var tw := create_tween()

@@ -102,6 +102,7 @@ func _input(event: InputEvent) -> void:
 
 func open() -> void:
 	visible = true
+	Audio.play(&"page_open", null, -6.0)
 	get_tree().paused = true
 	_notes.grab_focus()
 	opened.emit()
@@ -111,6 +112,7 @@ func close() -> void:
 	if not visible:
 		return
 	visible = false
+	Audio.play(&"page_close", null, -6.0)
 	get_tree().paused = false
 	_notes.release_focus()
 	_save()

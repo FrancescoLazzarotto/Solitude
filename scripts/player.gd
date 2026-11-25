@@ -46,6 +46,8 @@ const FALL_Y := -2.5
 const SAFE_SAMPLE_INTERVAL := 0.1
 const SAFE_HISTORY := 8
 const SWORD_REST := Vector3(-50.0, 15.0, 0.0)
+const STEP_DISTANCE := 1.9         ## metri percorsi tra un passo e il successivo
+const STEP_SOUNDS: Array[StringName] = [&"step", &"step2", &"step3", &"step4"]
 
 var max_hp := 4
 var hp := 4
@@ -64,6 +66,8 @@ var _hit_done := false
 var _swing_flip := false
 var _safe_history: Array[Vector3] = []
 var _safe_timer := 0.0
+var _step_dist := 0.0
+var _step_index := 0
 
 var _visual: Node3D
 var _rig: Node3D
@@ -203,11 +207,22 @@ func _tick_move(delta: float) -> void:
 	velocity.z = move_toward(velocity.z, target.z, rate * delta)
 	if moving:
 		facing = dir.normalized()
+		_footsteps(delta)
 	if _buffer_time > 0.0 and stamina > 0.0:
 		if _buffer_action == &"roll":
 			_start_roll()
 		elif _buffer_action == &"attack":
 			_start_attack()
+
+
+func _footsteps(delta: float) -> void:
+	if not is_on_floor():
+		return
+	_step_dist += Vector2(velocity.x, velocity.z).length() * delta
+	if _step_dist >= STEP_DISTANCE:
+		_step_dist = 0.0
+		_step_index = (_step_index + 1) % STEP_SOUNDS.size()
+		Audio.play(STEP_SOUNDS[_step_index], global_position, -4.0)
 
 
 func _start_roll() -> void:
@@ -221,6 +236,7 @@ func _start_roll() -> void:
 	facing = _roll_dir
 	state = State.ROLL
 	_state_time = 0.0
+	Audio.play(&"roll", global_position)
 	stats_changed.emit()
 
 
@@ -247,6 +263,7 @@ func _start_attack() -> void:
 	_hit_done = false
 	_swing_flip = not _swing_flip
 	_play_swing()
+	Audio.play(&"swing2" if _swing_flip else &"swing", global_position)
 	stats_changed.emit()
 
 
@@ -306,6 +323,7 @@ func _do_hit() -> void:
 		if dist > 0.4 and facing.dot(d / dist) < ATTACK_ARC_DOT:
 			continue
 		n.call("take_damage", ATTACK_DAMAGE, global_position)
+		Audio.play(&"hit_enemy", (n as Node3D).global_position)
 		hit_any = true
 	if hit_any:
 		hit_landed.emit()
@@ -339,6 +357,7 @@ func take_damage(amount: int, from_pos: Vector3) -> bool:
 	velocity = away.normalized() * KNOCKBACK
 	_invuln_time = HURT_INVULN
 	_flash()
+	Audio.play(&"hit_player", global_position)
 	stats_changed.emit()
 	if hp <= 0:
 		_die()
@@ -350,6 +369,7 @@ func take_damage(amount: int, from_pos: Vector3) -> bool:
 
 func _die() -> void:
 	state = State.DEAD
+	Audio.play(&"death", global_position)
 	_rig.rotation.x = 0.0
 	var tw := create_tween()
 	tw.tween_property(_rig, "rotation_degrees:z", 90.0, 0.35)
@@ -397,6 +417,7 @@ func add_max_stamina(amount: float) -> void:
 func fall_recover(fallback: Vector3) -> void:
 	## Caduto nel vuoto: perdi 1 di vita e torni sull'ultimo punto sicuro.
 	hp = maxi(0, hp - 1)
+	Audio.play(&"fall", global_position)
 	stats_changed.emit()
 	if hp <= 0:
 		velocity = Vector3.ZERO
