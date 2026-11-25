@@ -165,6 +165,21 @@ func _initialize() -> void:
 	p.take_damage(1, Vector3.ZERO)
 	check("morte -> death", count(["death"]) == d0 + 1)
 
+	print("=== PANNING (il microfono guarda come la camera) ===")
+	await process_frame
+	await process_frame
+	var lt: Transform3D = audio._listener.global_transform
+	var cam: Camera3D = main.camera
+	var screen_right: Vector3 = cam.global_basis.x
+	var screen_up := -cam.global_basis.z
+	screen_up.y = 0.0
+	screen_up = screen_up.normalized()
+	var right_local := lt.affine_inverse() * (lt.origin + screen_right)
+	var up_local := lt.affine_inverse() * (lt.origin + screen_up)
+	check("un suono a DESTRA sullo schermo e' a destra del microfono (x ~ +1)", right_local.x > 0.99 and absf(right_local.z) < 0.05, str(right_local.snappedf(0.01)))
+	check("un suono IN ALTO sullo schermo e' davanti al microfono (x ~ 0, z ~ -1)", absf(up_local.x) < 0.05 and up_local.z < -0.99, str(up_local.snappedf(0.01)))
+	check("il microfono sta sul robot, non sulla camera", lt.origin.distance_to(p.global_position) < 2.0, str(lt.origin.distance_to(p.global_position)))
+
 	print("=== RIPRODUZIONE REALE ===")
 	audio.play(&"hit_enemy", Vector3(0, 1, 0))
 	var playing := 0

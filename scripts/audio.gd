@@ -104,10 +104,11 @@ func play(sfx: StringName, pos: Variant = null, volume_db := 0.0, pitch := 1.0) 
 	p.play()
 
 
-## Il "microfono" segue il robot, non la camera (che sta a 17 metri di distanza).
-func set_listener_position(pos: Vector3) -> void:
+## Il "microfono" segue il robot (la camera sta a 17 metri) e ha la STESSA rotazione orizzontale
+## della camera: cosi' i suoni a destra sullo schermo panneggiano a destra, quelli in alto vanno davanti.
+func set_listener(pos: Vector3, yaw: float) -> void:
 	if _listener != null:
-		_listener.global_position = pos
+		_listener.global_transform = Transform3D(Basis(Vector3.UP, yaw), pos)
 
 
 func _setup_buses() -> void:

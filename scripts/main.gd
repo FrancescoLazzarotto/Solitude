@@ -419,7 +419,7 @@ func _process(delta: float) -> void:
 	var target_pos := player.get_global_transform_interpolated().origin + Vector3(0, 0.8, 0)
 	_cam_focus = _cam_focus.lerp(target_pos, 1.0 - exp(-CAMERA_FOLLOW * delta))
 	camera.global_position = _cam_focus + _cam_offset
-	Audio.set_listener_position(player.global_position + Vector3(0, 1.0, 0))
+	Audio.set_listener(player.global_position + Vector3(0, 1.0, 0), deg_to_rad(CAMERA_YAW_DEG))
 	_update_interaction()
 
 
