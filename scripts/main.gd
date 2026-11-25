@@ -28,9 +28,17 @@ var notebook: CanvasLayer
 
 var enemies: Array[CharacterBody3D] = []
 var checkpoint_pos := Vector3.ZERO
-var has_lantern := false
-var gate_open := false
+## Chiavi di progressione possedute (stesso vocabolario di carto_core::level: "lantern", "lever"...).
+var keys: Array[String] = []
+var has_lantern: bool:
+	get:
+		return keys.has("lantern")
+var gate_open: bool:
+	get:
+		return keys.has("lever")
 var chests_opened: Array[String] = []
+## id (dai dati del livello) -> interattivo. Il salvataggio ritrova i forzieri da qui, mai per posizione.
+var chest_its: Dictionary = {}
 
 var shrine_it: Node3D
 var stone_it: Node3D
@@ -226,6 +234,7 @@ func _build_chests() -> void:
 		var id: String = c["id"]
 		var g: Array = glue[id]
 		var it := _make_chest(LevelData.v3(c["pos"]), float(c["yaw"]), float(c["radius"]), g[0], "Apri il forziere", g[1])
+		chest_its[id] = it
 		if id == "lantern":
 			chest1_it = it
 		else:
@@ -503,7 +512,7 @@ func use_shrine() -> void:
 func open_lantern_chest() -> void:
 	_open_chest_visual(chest1_it)
 	chests_opened.append("lantern")
-	has_lantern = true
+	grant_key("lantern")
 	player.set_lantern(true)
 	hud.toast("Hai trovato la LANTERNA.\nOra vedi i sentieri che l'oscurità nascondeva.", 5.0)
 	Audio.play(&"chest_open", chest1_it.global_position)
@@ -534,7 +543,7 @@ func open_heart_chest() -> void:
 func pull_lever() -> void:
 	if gate_open:
 		return
-	gate_open = true
+	grant_key("lever")
 	lever_it.set("enabled", false)
 	gate_hint_it.set("enabled", false)
 	var pivot := lever_it.get_parent().get_node("LeverPivot") as Node3D
@@ -553,16 +562,25 @@ func pull_lever() -> void:
 # SALVATAGGIO
 # ===========================================================================
 
+func grant_key(key: String) -> void:
+	if not keys.has(key):
+		keys.append(key)
+
+
+## Chiavi che il livello conosce (quelle che chiunque nei dati puo' dare o richiedere).
+func _known_keys() -> Array[String]:
+	var known: Array[String] = [str(_props["bridge"]["requires"]), str(_props["gate"]["opened_by"]), str(_props["lever"]["grants"])]
+	for c: Dictionary in _props["chests"]:
+		if c.get("grants") != null:
+			known.append(str(c["grants"]))
+	return known
+
+
 func get_save_data() -> Dictionary:
-	var keys: Array[String] = []
-	if has_lantern:
-		keys.append("lantern")
-	if gate_open:
-		keys.append("lever")
 	return {
-		"checkpoint": [checkpoint_pos.x, checkpoint_pos.y, checkpoint_pos.z],
-		"keys": keys,
-		"chests_opened": chests_opened,
+		"checkpoint": "shrine",
+		"keys": keys.duplicate(),
+		"chests_opened": chests_opened.duplicate(),
 		"max_hp": player.max_hp,
 		"max_stamina": player.max_stamina,
 		"max_flasks": player.max_flasks,
@@ -583,36 +601,43 @@ func _load_game() -> void:
 
 
 ## Ripristina i progressi. Gli effetti sono istantanei (niente animazioni di apertura).
+## Robusto ai cambiamenti del livello: chiavi e forzieri sconosciuti vengono ignorati, il checkpoint
+## e' un id (mai coordinate che un cambio di geometria potrebbe mettere dentro un muro).
 func apply_save_data(d: Dictionary) -> void:
-	var cp: Array = d.get("checkpoint", [])
-	if cp.size() == 3:
-		checkpoint_pos = LevelData.v3(cp)
-	player.max_hp = int(d.get("max_hp", player.max_hp))
-	player.max_stamina = float(d.get("max_stamina", player.max_stamina))
-	player.max_flasks = int(d.get("max_flasks", player.max_flasks))
-	var keys: Array = d.get("keys", [])
-	if keys.has("lantern"):
-		has_lantern = true
+	checkpoint_pos = LevelData.v3(_props["shrine"]["spawn"])   # unico checkpoint finora: id "shrine"
+	player.max_hp = clampi(int(d.get("max_hp", player.max_hp)), 1, 40)
+	player.max_stamina = clampf(float(d.get("max_stamina", player.max_stamina)), 10.0, 1000.0)
+	player.max_flasks = clampi(int(d.get("max_flasks", player.max_flasks)), 0, 20)
+	var known := _known_keys()
+	for k: Variant in d.get("keys", []):
+		if known.has(str(k)):
+			_apply_key_instant(str(k))
+	for id: Variant in d.get("chests_opened", []):
+		var it: Node3D = chest_its.get(str(id))
+		if it == null:
+			continue   # forziere che il livello non ha piu': ignorato, non "il forziere sbagliato"
+		_open_chest_instant(it)
+		if str(id) not in chests_opened:
+			chests_opened.append(str(id))
+	player.heal_full()
+	player.teleport_to(checkpoint_pos)
+	_snap_camera()
+	_sync_hud()
+
+
+func _apply_key_instant(key: String) -> void:
+	grant_key(key)
+	if key == str(_props["bridge"]["requires"]):
 		player.set_lantern(true)
 		_bridge_col.disabled = false
 		_bridge_mesh.visible = true
 		_bridge_mat.albedo_color.a = 0.8
-	for id: Variant in d.get("chests_opened", []):
-		var it: Node3D = chest1_it if str(id) == "lantern" else chest2_it
-		_open_chest_instant(it)
-		if str(id) not in chests_opened:
-			chests_opened.append(str(id))
-	if keys.has("lever"):
-		gate_open = true
+	if key == str(_props["gate"]["opened_by"]):
 		lever_it.set("enabled", false)
 		gate_hint_it.set("enabled", false)
 		(lever_it.get_parent().get_node("LeverPivot") as Node3D).rotation_degrees.x = -30.0
 		_gate_col.disabled = true
 		_gate_body.position.y = -2.8
-	player.heal_full()
-	player.teleport_to(checkpoint_pos)
-	_snap_camera()
-	_sync_hud()
 
 
 func _open_chest_instant(it: Node3D) -> void:

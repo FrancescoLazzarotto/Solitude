@@ -5,7 +5,7 @@ extends RefCounted
 ## filtrare lo stato di un test nel successivo.
 
 const Paths := preload("res://scripts/paths.gd")
-const VERSION := 1
+const VERSION := 2
 
 
 static func enabled() -> bool:
@@ -48,10 +48,22 @@ static func read() -> Dictionary:
 		push_warning("Salvataggio illeggibile: si riparte da capo.")
 		return {}
 	var d: Dictionary = json.data
-	if int(d.get("version", -1)) != VERSION:
-		push_warning("Salvataggio di un'altra versione: si riparte da capo.")
-		return {}
-	return d
+	match int(d.get("version", -1)):
+		VERSION:
+			return d
+		1:
+			return _migrate_v1(d)
+		_:
+			push_warning("Salvataggio di un'altra versione: si riparte da capo.")
+			return {}
+
+
+## v1 salvava il checkpoint come coordinate; c'era un solo checkpoint (il santuario), quindi l'id e' "shrine".
+static func _migrate_v1(d: Dictionary) -> Dictionary:
+	var out := d.duplicate(true)
+	out["checkpoint"] = "shrine"
+	out["version"] = VERSION
+	return out
 
 
 static func delete() -> void:
