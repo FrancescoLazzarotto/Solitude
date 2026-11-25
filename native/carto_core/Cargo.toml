@@ -1,0 +1,8 @@
+[package]
+name = "carto_core"
+description = "Logica nativa del Cartografo (audio procedurale, livelli, validazione). Nessuna dipendenza da Godot."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[dependencies]

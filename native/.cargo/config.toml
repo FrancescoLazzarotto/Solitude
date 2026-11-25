@@ -1,0 +1,5 @@
+# Questo PC ha poca RAM (5.9 GB): un rustc e' gia' crashato per memoria esaurita.
+# La cartella di build viene spostata FUORI da OneDrive dagli script in tools/
+# (variabile CARGO_TARGET_DIR): migliaia di file che OneDrive non deve sincronizzare.
+[build]
+jobs = 2

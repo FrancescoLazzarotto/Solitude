@@ -1,0 +1,33 @@
+[workspace]
+resolver = "2"
+members = ["carto_core", "carto_gd"]
+
+[workspace.package]
+edition = "2021"
+version = "0.1.0"
+publish = false
+
+# Profilo di distribuzione/benchmark: LTO e massima ottimizzazione.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+debug = false
+
+# Profilo per iterare in fretta (poco RAM, compila veloce, ma comunque ottimizzato).
+[profile.fast]
+inherits = "release"
+opt-level = 2
+lto = false
+codegen-units = 16
+incremental = true
+
+# Le librerie di binding di Godot non servono ottimizzate al massimo durante l'iterazione.
+[profile.fast.package.godot-core]
+opt-level = 1
+[profile.fast.package.godot-ffi]
+opt-level = 1
+[profile.fast.package.godot-codegen]
+opt-level = 1
+[profile.fast.package.godot]
+opt-level = 1

@@ -1,0 +1,13 @@
+[package]
+name = "carto_gd"
+description = "Involucro GDExtension (gdext) di carto_core per Godot 4."
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+carto_core = { path = "../carto_core" }
+godot = "=0.5.6"
