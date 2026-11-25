@@ -33,4 +33,6 @@ da sincronizzare su OneDrive. Chiudi Godot prima di ricompilare: Windows blocca 
 | `docs/PROGRESS.md` | Stato del lavoro, numeri di performance, prossimi passi |
 
 ## Controlli
-WASD / frecce: muovi - J o click: attacca - Spazio/Shift: rotola - E: interagisci - Tab: taccuino. Gamepad mappato (non ancora provato).
+WASD / frecce: muovi - J o click: attacca - Spazio/Shift: rotola - Q: fiaschetta di cura - E: interagisci - Tab: taccuino. Gamepad mappato (non ancora provato).
+
+Il gioco salva da solo (santuario, forzieri, leva) in `user://save.json`. Per ripartire da zero: avviare con `-- --carto-new-game` oppure cancellare il file.
