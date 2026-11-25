@@ -7,6 +7,7 @@ const PlayerScript := preload("res://scripts/player.gd")
 const EnemyScript := preload("res://scripts/enemy.gd")
 const InteractableScript := preload("res://scripts/interactable.gd")
 const HudScript := preload("res://scripts/hud.gd")
+const Paths := preload("res://scripts/paths.gd")
 const NotebookScript := preload("res://scripts/notebook.gd")
 
 # --- Camera (prospettiva con angolo fisso, alla Tunic) ---
@@ -404,6 +405,8 @@ func _build_ui() -> void:
 	notebook.set_script(NotebookScript)
 	add_child(notebook)
 	_sync_hud()
+	if not Paths.is_test():
+		hud.fade_in_from_black(0.35, 1.0)
 
 
 func _sync_hud() -> void:

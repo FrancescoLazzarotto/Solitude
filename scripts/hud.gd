@@ -107,6 +107,14 @@ func toast(text: String, duration := 4.0) -> void:
 	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.8)
 
 
+## Parte dal nero e si schiarisce: copre il primo caricamento (shader, rendering audio in background).
+func fade_in_from_black(hold: float, duration: float) -> void:
+	_fade.color.a = 1.0
+	var tw := create_tween()
+	tw.tween_interval(hold)
+	tw.tween_property(_fade, "color:a", 0.0, duration)
+
+
 func fade(to_alpha: float, time: float) -> void:
 	var tw := create_tween()
 	tw.tween_property(_fade, "color:a", to_alpha, time)
