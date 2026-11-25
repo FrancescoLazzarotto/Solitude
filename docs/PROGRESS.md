@@ -26,6 +26,8 @@ Il portatile e' termicamente rumoroso (146-197 fps tra giri): **confrontare semp
 1. *Il "blocco da 500 ms" del baseline v1 non esisteva.* Il benchmark metteva `max_hp = 9999`: al primo attacco l'HUD costruiva 9999 `ColorRect` (10.000 nodi), che restavano a rallentare tutto il test. Il benchmark ora rende il robot invulnerabile senza toccare la vita massima. I numeri v1 (167 fps, 1% low 73) sono **da scartare**.
 2. Il rendering audio all'avvio (~1.4 s di CPU in thread) cadeva dentro la finestra di misura e sembrava costare il 47% degli FPS. Il benchmark ora aspetta la fine del caricamento. A regime audio on/off e' indistinguibile.
 3. Per scoprirli: loggare i contatori del motore (`Performance`) sul frame del problema (nodi, oggetti, draw call).
+4. *Crash all'uscita (0xC0000005)* se il gioco veniva chiuso mentre il thread audio in Rust lavorava ancora: Godot scaricava la DLL con un thread in esecuzione al suo interno. Scoperto da `level_test` (breve, esce prima della fine del rendering). Ora il rendering e' annullabile (`AtomicBool` controllato nei cicli) e `Drop` di `CartoAudio` ferma E attende il thread. Test di regressione: "shutdown stress" in `tools/test.ps1` (uscita a 50/200/500/1200 ms, exit code 0).
+5. *Il panning audio era ruotato di 45 gradi* (microfono con base identita', camera con yaw 45): i test "play() e' stato chiamato" non potevano accorgersene. Ora `Audio.set_listener(pos, yaw)` + test geometrico sui versori schermo-destra/schermo-alto.
 
 ## Milestone
 - [x] **Prototipo giocabile**: robot (movimento, rotolo con i-frames, spada, stamina), nemico con attacco telegrafato, santuario/checkpoint, due forzieri, lanterna + ponte nascosto, leva + cancello-scorciatoia, caduta nel vuoto, taccuino (pausa del gioco).
@@ -33,13 +35,14 @@ Il portatile e' termicamente rumoroso (146-197 fps tra giri): **confrontare semp
 - [x] **M1 audio procedurale (Rust)**: 26 effetti + musica ambientale a loop senza giunture (Re dorico, 64 s), tutto sintetizzato da zero e deterministico. Rendering in un thread DENTRO Rust (gdext vieta chiamate da Thread di Godot: il processo si interrompe), 3D posizionale con ascoltatore che segue il robot, bus SFX/Music con limitatore sul master. Tutti gli eventi di gioco sono agganciati e testati.
   - Tempi (release): 26 effetti in ~120-240 ms, musica da 64 s in ~780 ms (accordi in parallelo), in background.
   - Verifica: 19 test unitari (`cargo test`) + 36 controlli d'integrazione + analisi con spettrogrammi. **Non ascoltato da un orecchio umano**: bilanciamento e gusto vanno giudicati giocando.
-- [ ] **M2 livello come dati + validatore Rust** (IN CORSO). Decisione di architettura (confine delle dipendenze):
-  - i dati del livello stanno in `levels/slice.json` (un solo file, letto sia da GDScript sia da Rust);
-  - il **validatore di raggiungibilita'** e' Rust puro in `native/carto_core/src/level.rs` (modello a griglia 2.5D da 0.25 m, passo max 0.45 m, cadute permesse, chiavi `lantern`/`lever`), testato da `cargo test`, NESSUNA dipendenza dalla DLL a runtime;
-  - la **geometria** si costruisce in GDScript al caricamento (`scripts/level_builder.gd`): cosi' una DLL mancante o bloccata non impedisce di avviare il gioco (coerente col fallback muto dell'audio);
-  - **non si uniscono mesh finche' non serve**: 93 draw call a 183 fps non lo giustificano; se si fara', con benchmark di stress (fetta istanziata 4 volte, prima/dopo).
-  - Porting a comportamento invariato: ogni check di `tests/game_test.gd` (anche le altezze dei raycast) deve restare verde.
-  - **Prossimi passi esatti**: (1) `levels/slice.json` con tutta la geometria e i prop; (2) `level.rs` + test `cargo test -p carto_core level::`; (3) `scripts/level_builder.gd` e `main.gd` che lo usa; (4) `tools/test.ps1` verde; (5) test di raggiungibilita' che sostituiscono i controlli manuali su recinzione/cancello/forziere 2.
+- [x] **M2 livello come dati + validatore Rust**. Confine delle dipendenze deciso cosi':
+  - i dati del livello stanno in `levels/slice.json` (geometria, prop, nemici, chiavi); `scripts/level_data.gd` li legge e `main.gd` costruisce il mondo da li';
+  - il **validatore di raggiungibilita'** e' Rust puro (`native/carto_core/src/level.rs`): mappa di altezze 2.5D a celle da 25 cm, salita max 0.45 m, cadute libere, vuoti mai, progressione a chiavi (`lantern`, `lever`) fino al punto fisso. Testato da `cargo test` (33 test) e anche esposto a Godot (`CartoLevel`: `validate`, `analyze`, `heights`);
+  - la geometria si costruisce in GDScript al caricamento: una DLL mancante o bloccata non impedisce di avviare il gioco;
+  - **porting a comportamento invariato**: tutti i 46 controlli di `game_test` passano con coordinate identiche al decimale;
+  - **il modello coincide con la fisica**: `tests/level_test.gd` confronta le quote del modello con i raycast del motore su 1400 punti (stato iniziale e dopo lanterna+leva): 0 differenze;
+  - dimostrato dal validatore: cuore e leva irraggiungibili senza lanterna; corridoio sigillato dal cortile finche' la leva non e' tirata; la scorciatoia riporta al santuario anche senza ponte; nessun oggetto orfano. **Test di mutazione**: senza staccionata vede l'aggiramento, con ponte sempre attivo vede il cuore raggiungibile;
+  - **fusione delle mesh NON fatta, di proposito**: 93 draw call a 183 fps non la giustificano. Se servira' (livelli molto piu' grandi), con benchmark di stress prima/dopo.
 - [ ] **M3 feeling**: particelle d'impatto, screen shake, pathfinding nemici (NavigationServer3D), fiaschetta di cura, altri due tipi di nemico, dissolvenza d'avvio.
 - [ ] **M4 mondo**: piu' zone, segreti, pagine di lore nel taccuino, boss.
 
@@ -52,4 +55,4 @@ Il portatile e' termicamente rumoroso (146-197 fps tra giri): **confrontare semp
 - `bin/carto.dll` non e' versionata: si rigenera con `tools/build.ps1`.
 
 ## Non ancora verificato
-Gamepad, controlli touch/mobile, console, prestazioni su altro hardware, qualita' percepita dell'audio.
+Gamepad, controlli touch/mobile, console, prestazioni su altro hardware, qualita' percepita dell'audio, export (ricordare di includere `levels/*.json` nel filtro di esportazione).
