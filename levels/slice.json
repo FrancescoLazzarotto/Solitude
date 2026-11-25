@@ -1,0 +1,54 @@
+{
+  "name": "slice",
+  "version": 1,
+  "materials": {
+    "ground": [0.62, 0.66, 0.72],
+    "stone":  [0.50, 0.52, 0.58],
+    "wall":   [0.34, 0.36, 0.43],
+    "void":   [0.05, 0.05, 0.08]
+  },
+  "solids": [
+    { "id": "ground_a",        "min": [-10, -4, -8],     "max": [10, 0, 10],        "mat": "ground" },
+    { "id": "ground_corridor", "min": [6, -4, -20],      "max": [10, 0, -8],        "mat": "ground" },
+    { "id": "plateau_b",       "min": [-6, -5, -12],     "max": [6, 2, -8],         "mat": "stone" },
+    { "id": "terrace_c",       "min": [-6, -5, -19.5],   "max": [6, 2, -15],        "mat": "stone" },
+    { "id": "void_floor",      "min": [-6, -5.2, -15],   "max": [6, -5.0, -12],     "mat": "void", "collide": false },
+
+    { "id": "wall_west_a",     "min": [-10.5, -5, -8.5], "max": [-10, 5, 10.5],     "mat": "wall" },
+    { "id": "wall_north_a",    "min": [-10.5, -5, -8.5], "max": [-6, 5, -8],        "mat": "wall" },
+    { "id": "wall_west_b",     "min": [-6.5, -5, -20.5], "max": [-6, 5, -8],        "mat": "wall" },
+    { "id": "wall_north",      "min": [-6.5, -5, -20.5], "max": [10.5, 5, -20],     "mat": "wall" },
+    { "id": "wall_east",       "min": [10, -5, -20.5],   "max": [10.5, 0.9, 10.5],  "mat": "wall" },
+    { "id": "wall_south",      "min": [-10.5, -5, 10],   "max": [10.5, 0.9, 10.5],  "mat": "wall" },
+    { "id": "fence",           "min": [5.6, 2, -12],     "max": [6, 2.6, -8],       "mat": "wall" },
+
+    { "id": "pillar_1",        "min": [-7.5, 0, -0.5],   "max": [-6.5, 2.6, 0.5],   "mat": "stone" },
+    { "id": "pillar_2",        "min": [6.5, 0, 1.5],     "max": [7.5, 2.6, 2.5],    "mat": "stone" },
+    { "id": "pillar_3",        "min": [-7.5, 0, 7.5],    "max": [-6.5, 2.6, 8.5],   "mat": "stone" },
+    { "id": "pillar_4",        "min": [6.5, 0, 7.5],     "max": [7.5, 2.6, 8.5],    "mat": "stone" },
+    { "id": "pillar_5",        "min": [-4.5, 2, -11.5],  "max": [-3.5, 4.6, -10.5], "mat": "stone" },
+    { "id": "pillar_6",        "min": [3.5, 2, -12],     "max": [4.5, 4.6, -11],    "mat": "stone" },
+    { "id": "lantern_pillar",  "min": [-4.6, 2, -9.9],   "max": [-3.6, 5.0, -8.9],  "mat": "stone" }
+  ],
+  "wedges": [
+    { "id": "ramp_1", "start": [0, 0, -4],  "end": [0, 2, -8],  "width": 4.0, "mat": "stone" },
+    { "id": "ramp_2", "start": [9, 0, -17], "end": [6, 2, -17], "width": 3.0, "mat": "stone" }
+  ],
+  "props": {
+    "player_start": [0.0, 0.05, 7.5],
+    "shrine": { "pos": [0, 0, 6], "spawn": [0, 0.05, 7.5], "radius": 2.4 },
+    "stone":  { "pos": [-4.5, 0, 3], "yaw": 45, "radius": 2.2 },
+    "chests": [
+      { "id": "lantern", "pos": [-5.0, 2.0, -10.8], "yaw": 45, "radius": 2.0, "grants": "lantern" },
+      { "id": "heart",   "pos": [0.0, 2.0, -17.5],  "yaw": 45, "radius": 2.0, "grants": null }
+    ],
+    "gate": { "min": [6, 0, -8.25], "max": [10, 2.6, -7.75], "opened_by": "lever", "hint": [8, 0, -6.2] },
+    "lever": { "pos": [8.0, 0.0, -10.5], "radius": 1.8, "grants": "lever" },
+    "bridge": { "min": [-1, 1.7, -15.2], "max": [1, 2.0, -11.8], "requires": "lantern" },
+    "enemies": [
+      [5.0, 0.05, -1.0],
+      [3.5, 2.05, -10.0],
+      [-0.5, 2.05, -10.8]
+    ]
+  }
+}
