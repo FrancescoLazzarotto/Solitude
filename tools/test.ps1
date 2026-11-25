@@ -28,7 +28,9 @@ Write-Host "=== import progetto ===" -ForegroundColor Cyan
 
 foreach ($t in (Get-ChildItem (Join-Path $script:Root 'tests') -Filter '*_test.gd')) {
     Write-Host "=== $($t.Name) ===" -ForegroundColor Cyan
-    $out = & $godot --headless --path $script:Root --script $t.FullName -- --carto-test 2>&1 | ForEach-Object { "$_" }
+    # Il salvataggio e' spento nei test, tranne in save_test (che lo prova apposta, in user://test).
+    $extra = if ($t.Name -eq 'save_test.gd') { '--carto-savetest' } else { '' }
+    $out = & $godot --headless --path $script:Root --script $t.FullName -- --carto-test $extra 2>&1 | ForEach-Object { "$_" }
     $out | Where-Object { $_ -match '^(PASS|FAIL|===|FALLITI|ERROR|SCRIPT)' -or $_ -match 'ERROR|SCRIPT ERROR' }
     if ($LASTEXITCODE -ne 0) { $failed = $true; Write-Host "$($t.Name): exit code $LASTEXITCODE" -ForegroundColor Red }
     if ($out -match '^FAIL') { $failed = $true }
