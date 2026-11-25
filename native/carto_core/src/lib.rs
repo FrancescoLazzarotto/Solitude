@@ -4,4 +4,5 @@
 pub mod dsp;
 pub mod rng;
 pub mod synth;
+pub mod sys;
 pub mod wav;

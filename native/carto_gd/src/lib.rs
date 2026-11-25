@@ -107,6 +107,7 @@ impl CartoAudio {
         }
         let (seed, secs) = (seed as u64, music_secs as f32);
         self.job = Some(std::thread::spawn(move || {
+            carto_core::sys::background_priority();
             let t0 = std::time::Instant::now();
             let sfx = render_bank_pcm(seed);
             let m = synth::render_ambient(seed, secs);
@@ -159,6 +160,7 @@ fn render_bank_pcm(seed: u64) -> Vec<(&'static str, Vec<u8>)> {
         let handles: Vec<_> = (0..workers)
             .map(|w| {
                 s.spawn(move || {
+                    carto_core::sys::background_priority();
                     names
                         .iter()
                         .enumerate()

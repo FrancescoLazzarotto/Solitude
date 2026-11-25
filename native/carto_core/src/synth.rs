@@ -564,7 +564,14 @@ pub fn render_ambient(seed: u64, loop_secs: f32) -> Stereo {
 
     // Gli accordi sono indipendenti: un thread ciascuno.
     let chords: Vec<(usize, Vec<f32>, Vec<f32>, Vec<f32>)> = std::thread::scope(|s| {
-        let handles: Vec<_> = (0..CHORDS.len()).map(|ci| s.spawn(move || render_chord(seed, ci, section))).collect();
+        let handles: Vec<_> = (0..CHORDS.len())
+            .map(|ci| {
+                s.spawn(move || {
+                    crate::sys::background_priority();
+                    render_chord(seed, ci, section)
+                })
+            })
+            .collect();
         handles.into_iter().map(|h| h.join().expect("thread del pad")).collect()
     });
     for (start, l, r, sd) in &chords {
