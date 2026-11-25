@@ -34,6 +34,14 @@ foreach ($t in (Get-ChildItem (Join-Path $script:Root 'tests') -Filter '*_test.g
     if ($out -match '^FAIL') { $failed = $true }
 }
 
+# Stress di chiusura: uscire mentre i thread nativi lavorano non deve far crashare il processo.
+Write-Host "=== shutdown stress (uscita a 50/200/500/1200 ms) ===" -ForegroundColor Cyan
+foreach ($ms in 50, 200, 500, 1200) {
+    & $godot --headless --path $script:Root --script (Join-Path $script:Root 'tests\quit_early.gd') -- --carto-test "--quit-after-ms=$ms" 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) { $failed = $true; Write-Host "FAIL  uscita dopo $ms ms: exit code $LASTEXITCODE" -ForegroundColor Red }
+    else { Write-Host "PASS  uscita dopo $ms ms: exit code 0" }
+}
+
 $hashAfter = if (Test-Path $realSave) { (Get-FileHash $realSave).Hash } else { 'ASSENTE' }
 if ($hashBefore -ne $hashAfter) { $failed = $true; Write-Host "I TEST HANNO TOCCATO IL SALVATAGGIO REALE!" -ForegroundColor Red }
 else { Write-Host "Salvataggio reale intatto." -ForegroundColor Green }
