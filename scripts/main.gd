@@ -9,6 +9,9 @@ const InteractableScript := preload("res://scripts/interactable.gd")
 const HudScript := preload("res://scripts/hud.gd")
 const Paths := preload("res://scripts/paths.gd")
 const NotebookScript := preload("res://scripts/notebook.gd")
+const LevelData := preload("res://scripts/level_data.gd")
+
+const LEVEL_PATH := "res://levels/slice.json"
 
 # --- Camera (prospettiva con angolo fisso, alla Tunic) ---
 const CAMERA_PITCH_DEG := 50.0
@@ -17,15 +20,13 @@ const CAMERA_DISTANCE := 17.0
 const CAMERA_FOV := 38.0
 const CAMERA_FOLLOW := 7.0
 
-const SHRINE_POS := Vector3(0.0, 0.0, 6.0)
-
 var player: CharacterBody3D
 var camera: Camera3D
 var hud: CanvasLayer
 var notebook: CanvasLayer
 
 var enemies: Array[CharacterBody3D] = []
-var checkpoint_pos := Vector3(0.0, 0.05, 7.5)
+var checkpoint_pos := Vector3.ZERO
 var has_lantern := false
 var gate_open := false
 
@@ -36,6 +37,10 @@ var chest2_it: Node3D
 var lever_it: Node3D
 var gate_hint_it: Node3D
 
+var _level: Dictionary = {}
+var _props: Dictionary = {}
+var _shrine_pos := Vector3.ZERO
+var _bridge_center := Vector3.ZERO
 var _cam_offset := Vector3.ZERO
 var _cam_focus := Vector3.ZERO
 var _nearest: Node3D
@@ -50,6 +55,12 @@ var _bridge_mat: StandardMaterial3D
 
 
 func _ready() -> void:
+	_level = LevelData.load_level(LEVEL_PATH)
+	if _level.is_empty():
+		return
+	_props = _level["props"]
+	_shrine_pos = LevelData.v3(_props["shrine"]["pos"])
+	checkpoint_pos = LevelData.v3(_props["shrine"]["spawn"])
 	_setup_input()
 	_grid_tex = _make_grid_texture()
 	_build_environment()
@@ -129,53 +140,27 @@ func _build_environment() -> void:
 
 
 func _build_level() -> void:
-	var ground := _world_mat(Color(0.62, 0.66, 0.72))
-	var stone := _world_mat(Color(0.5, 0.52, 0.58))
-	var wall := _world_mat(Color(0.34, 0.36, 0.43))
-
-	# Area A: cortile del santuario (livello 0)
-	_box(Vector3(-10, -4, -8), Vector3(10, 0, 10), ground)
-	# Corridoio est (livello 0): ci si arriva solo dal cancello o dall'alto
-	_box(Vector3(6, -4, -20), Vector3(10, 0, -8), ground)
-	# Area B: altopiano (livello 2)
-	_box(Vector3(-6, -5, -12), Vector3(6, 2, -8), stone)
-	# Area C: terrazza oltre il vuoto (livello 2)
-	_box(Vector3(-6, -5, -19.5), Vector3(6, 2, -15), stone)
-	# Il vuoto tra B e C: solo visivo
-	_box(Vector3(-6, -5.2, -15), Vector3(6, -5.0, -12), _world_mat(Color(0.05, 0.05, 0.08)), false)
-
+	var mats := {}
+	for key: String in _level["materials"]:
+		mats[key] = _world_mat(LevelData.color(_level["materials"][key]))
+	for sd: Dictionary in _level["solids"]:
+		_box(LevelData.v3(sd["min"]), LevelData.v3(sd["max"]), mats[sd["mat"]], bool(sd.get("collide", true)))
 	# Rampe (cuneo solido: niente spazi sotto)
-	_add_wedge(Vector3(0, 0, -4), Vector3(0, 2, -8), 4.0, stone)
-	_add_wedge(Vector3(9, 0, -17), Vector3(6, 2, -17), 3.0, stone)
-
-	# Muri esterni: dietro (nord/ovest) alti, davanti (sud/est) bassi per non coprire la vista
-	_box(Vector3(-10.5, -5, -8.5), Vector3(-10, 5, 10.5), wall)
-	_box(Vector3(-10.5, -5, -8.5), Vector3(-6, 5, -8), wall)
-	_box(Vector3(-6.5, -5, -20.5), Vector3(-6, 5, -8), wall)
-	_box(Vector3(-6.5, -5, -20.5), Vector3(10.5, 5, -20), wall)
-	_box(Vector3(10, -5, -20.5), Vector3(10.5, 0.9, 10.5), wall)
-	_box(Vector3(-10.5, -5, 10), Vector3(10.5, 0.9, 10.5), wall)
-	# Staccionata sul bordo est dell'altopiano: non si scavalca per scendere nel corridoio
-	_box(Vector3(5.6, 2, -12), Vector3(6, 2.6, -8), wall)
-
-	# Colonne decorative
-	for p: Vector3 in [Vector3(-7, 0, 0), Vector3(7, 0, 2), Vector3(-7, 0, 8), Vector3(7, 0, 8),
-			Vector3(-4, 2, -11), Vector3(4, 2, -11.5)]:
-		_box(p + Vector3(-0.5, 0, -0.5), p + Vector3(0.5, 2.6, 0.5), stone)
+	for wd: Dictionary in _level["wedges"]:
+		_add_wedge(LevelData.v3(wd["start"]), LevelData.v3(wd["end"]), float(wd["width"]), mats[wd["mat"]])
 
 
 func _build_props() -> void:
 	_build_shrine()
 	_build_stone()
-	_build_lantern_chest()
-	_build_heart_chest()
+	_build_chests()
 	_build_gate_and_lever()
 	_build_hidden_bridge()
 
 
 func _build_shrine() -> void:
 	var root := Node3D.new()
-	root.position = SHRINE_POS
+	root.position = _shrine_pos
 	add_child(root)
 	var body := StaticBody3D.new()
 	body.add_child(_box_collision(Vector3(0.9, 1.6, 0.9), Vector3(0, 0.8, 0)))
@@ -196,13 +181,13 @@ func _build_shrine() -> void:
 	_shrine_light.omni_range = 6.0
 	_shrine_light.position = Vector3(0, 2.0, 0)
 	root.add_child(_shrine_light)
-	shrine_it = _make_interactable(root, Vector3.ZERO, "Riposa al santuario", 2.4, use_shrine)
+	shrine_it = _make_interactable(root, Vector3.ZERO, "Riposa al santuario", float(_props["shrine"]["radius"]), use_shrine)
 
 
 func _build_stone() -> void:
 	var root := Node3D.new()
-	root.position = Vector3(-4.5, 0.0, 3.0)
-	root.rotation_degrees.y = 45.0
+	root.position = LevelData.v3(_props["stone"]["pos"])
+	root.rotation_degrees.y = float(_props["stone"]["yaw"])
 	add_child(root)
 	var body := StaticBody3D.new()
 	body.add_child(_box_collision(Vector3(1.4, 2.4, 0.6), Vector3(0, 1.2, 0)))
@@ -223,24 +208,30 @@ func _build_stone() -> void:
 	dia.size = Vector3(0.36, 0.36, 0.06)
 	var d := _mesh(root, dia, glow, Vector3(0, 0.5, 0.32))
 	d.rotation_degrees.z = 45.0
-	stone_it = _make_interactable(root, Vector3(0, 0, 1.2), "Esamina", 2.2, func() -> void:
+	stone_it = _make_interactable(root, Vector3(0, 0, 1.2), "Esamina", float(_props["stone"]["radius"]), func() -> void:
 		hud.toast("Tre simboli luminosi: un anello, un triangolo e un rombo.\nMeglio annotarli nel taccuino (Tab).", 6.0))
 
 
-func _build_lantern_chest() -> void:
-	# Nascosto dietro una colonna, vista dalla camera.
-	_box(Vector3(-4.6, 2, -9.9), Vector3(-3.6, 5.0, -8.9), _world_mat(Color(0.5, 0.52, 0.58)))
-	chest1_it = _make_chest(Vector3(-5.0, 2.0, -10.8), Color(1.0, 0.8, 0.4), "Apri il forziere", open_lantern_chest)
+func _build_chests() -> void:
+	# Posizione, orientamento e raggio vengono dai dati; colore e azione sono "colla" di gioco.
+	var glue := {
+		"lantern": [Color(1.0, 0.8, 0.4), open_lantern_chest],
+		"heart": [Color(1.0, 0.4, 0.5), open_heart_chest],
+	}
+	for c: Dictionary in _props["chests"]:
+		var id: String = c["id"]
+		var g: Array = glue[id]
+		var it := _make_chest(LevelData.v3(c["pos"]), float(c["yaw"]), float(c["radius"]), g[0], "Apri il forziere", g[1])
+		if id == "lantern":
+			chest1_it = it
+		else:
+			chest2_it = it
 
 
-func _build_heart_chest() -> void:
-	chest2_it = _make_chest(Vector3(0.0, 2.0, -17.5), Color(1.0, 0.4, 0.5), "Apri il forziere", open_heart_chest)
-
-
-func _make_chest(pos: Vector3, glow_color: Color, prompt: String, cb: Callable) -> Node3D:
+func _make_chest(pos: Vector3, yaw: float, radius: float, glow_color: Color, prompt: String, cb: Callable) -> Node3D:
 	var root := Node3D.new()
 	root.position = pos
-	root.rotation_degrees.y = 45.0
+	root.rotation_degrees.y = yaw
 	add_child(root)
 	var body := StaticBody3D.new()
 	body.add_child(_box_collision(Vector3(0.9, 0.5, 0.6), Vector3(0, 0.25, 0)))
@@ -267,7 +258,7 @@ func _make_chest(pos: Vector3, glow_color: Color, prompt: String, cb: Callable) 
 	light.omni_range = 5.0
 	light.position = Vector3(0, 1.0, 0.3)
 	root.add_child(light)
-	return _make_interactable(root, Vector3(0, 0, 0.5), prompt, 2.0, cb)
+	return _make_interactable(root, Vector3(0, 0, 0.5), prompt, radius, cb)
 
 
 func _open_chest_visual(it: Node3D) -> void:
@@ -294,16 +285,17 @@ func _open_chest_visual(it: Node3D) -> void:
 
 func _build_gate_and_lever() -> void:
 	var iron := _mat(Color(0.3, 0.22, 0.22))
-	_gate_body = _box(Vector3(6, 0, -8.25), Vector3(10, 2.6, -7.75), iron)
+	var gate: Dictionary = _props["gate"]
+	_gate_body = _box(LevelData.v3(gate["min"]), LevelData.v3(gate["max"]), iron)
 	_gate_col = _gate_body.get_child(0) as CollisionShape3D
 	var lock := BoxMesh.new()
 	lock.size = Vector3(0.7, 0.7, 0.2)
 	_mesh(_gate_body, lock, _mat(Color(1.0, 0.25, 0.2), 2.5), Vector3(0, 0.6, 0.2))
-	gate_hint_it = _make_interactable(self, Vector3(8, 0, -6.2), "Esamina il cancello", 2.4, func() -> void:
+	gate_hint_it = _make_interactable(self, LevelData.v3(gate["hint"]), "Esamina il cancello", 2.4, func() -> void:
 		hud.toast("Il cancello è sbarrato. Non si apre da questo lato.", 4.0))
 
 	var lever_root := Node3D.new()
-	lever_root.position = Vector3(8.0, 0.0, -10.5)
+	lever_root.position = LevelData.v3(_props["lever"]["pos"])
 	add_child(lever_root)
 	var lbase := BoxMesh.new()
 	lbase.size = Vector3(0.7, 0.4, 0.7)
@@ -322,13 +314,16 @@ func _build_gate_and_lever() -> void:
 	knob.radius = 0.12
 	knob.height = 0.24
 	_mesh(pivot, knob, _mat(Color(1.0, 0.25, 0.2), 2.0), Vector3(0, 0.95, 0))
-	lever_it = _make_interactable(lever_root, Vector3(0, 0, 0.8), "Tira la leva", 1.8, pull_lever)
+	lever_it = _make_interactable(lever_root, Vector3(0, 0, 0.8), "Tira la leva", float(_props["lever"]["radius"]), pull_lever)
 
 
 func _build_hidden_bridge() -> void:
+	var bmin := LevelData.v3(_props["bridge"]["min"])
+	var bmax := LevelData.v3(_props["bridge"]["max"])
+	_bridge_center = (bmin + bmax) * 0.5
 	var body := StaticBody3D.new()
-	body.position = Vector3(0, 0, -13.5)
-	_bridge_col = _box_collision(Vector3(2.0, 0.3, 3.4), Vector3(0, 1.85, 0))
+	body.position = _bridge_center
+	_bridge_col = _box_collision(bmax - bmin, Vector3.ZERO)
 	_bridge_col.disabled = true
 	body.add_child(_bridge_col)
 	add_child(body)
@@ -339,8 +334,8 @@ func _build_hidden_bridge() -> void:
 	_bridge_mat.emission_energy_multiplier = 1.5
 	_bridge_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	var bm := BoxMesh.new()
-	bm.size = Vector3(2.0, 0.3, 3.4)
-	_bridge_mesh = _mesh(body, bm, _bridge_mat, Vector3(0, 1.85, 0))
+	bm.size = bmax - bmin
+	_bridge_mesh = _mesh(body, bm, _bridge_mat, Vector3.ZERO)
 	_bridge_mesh.visible = false
 
 
@@ -351,7 +346,7 @@ func _build_hidden_bridge() -> void:
 func _build_player() -> void:
 	player = CharacterBody3D.new()
 	player.set_script(PlayerScript)
-	player.position = checkpoint_pos
+	player.position = LevelData.v3(_props["player_start"])
 	add_child(player)
 	player.connect("died", _on_player_died)
 	player.connect("fell", _on_player_fell)
@@ -359,9 +354,8 @@ func _build_player() -> void:
 
 
 func _build_enemies() -> void:
-	_spawn_enemy(Vector3(5.0, 0.05, -1.0))
-	_spawn_enemy(Vector3(3.5, 2.05, -10.0))
-	_spawn_enemy(Vector3(-0.5, 2.05, -10.8))
+	for p: Array in _props["enemies"]:
+		_spawn_enemy(LevelData.v3(p))
 
 
 func _spawn_enemy(pos: Vector3) -> CharacterBody3D:
@@ -486,11 +480,11 @@ func reset_enemies() -> void:
 # ===========================================================================
 
 func use_shrine() -> void:
-	checkpoint_pos = SHRINE_POS + Vector3(0, 0.05, 1.5)
+	checkpoint_pos = LevelData.v3(_props["shrine"]["spawn"])
 	reset_enemies()
 	player.heal_full()
 	hud.toast("Santuario: salute ripristinata.\nI nemici sono tornati. Se cadi, ripartirai da qui.", 4.5)
-	Audio.play(&"shrine_rest", SHRINE_POS)
+	Audio.play(&"shrine_rest", _shrine_pos)
 	Audio.play(&"heal", player.global_position, -4.0)
 	var tw := create_tween()
 	tw.tween_property(_shrine_light, "light_energy", 5.0, 0.2)
@@ -512,7 +506,7 @@ func _reveal_bridge() -> void:
 	_bridge_mesh.visible = true
 	var tw := create_tween()
 	tw.tween_property(_bridge_mat, "albedo_color:a", 0.8, 1.5)
-	Audio.play(&"bridge_reveal", Vector3(0, 2, -13.5))
+	Audio.play(&"bridge_reveal", Vector3(_bridge_center.x, 2.0, _bridge_center.z))
 
 
 func open_heart_chest() -> void:
