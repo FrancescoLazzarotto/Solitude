@@ -89,6 +89,20 @@ pub struct Bridge {
     pub requires: String,
 }
 
+fn guardian() -> String {
+    "guardian".to_string()
+}
+
+/// Tipi di nemico noti al gioco (`scripts/enemy.gd`).
+pub const ENEMY_KINDS: [&str; 3] = ["guardian", "brute", "sentinel"];
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct EnemySpawn {
+    pub pos: V3,
+    #[serde(default = "guardian")]
+    pub kind: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct Props {
     pub player_start: V3,
@@ -98,7 +112,7 @@ pub struct Props {
     pub gate: Gate,
     pub lever: Lever,
     pub bridge: Bridge,
-    pub enemies: Vec<V3>,
+    pub enemies: Vec<EnemySpawn>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -132,6 +146,11 @@ impl Level {
                 if s.min[k] >= s.max[k] {
                     return Err(format!("solido '{}': min >= max sull'asse {k}", s.id));
                 }
+            }
+        }
+        for (n, e) in self.props.enemies.iter().enumerate() {
+            if !ENEMY_KINDS.contains(&e.kind.as_str()) {
+                return Err(format!("nemico {n}: tipo sconosciuto '{}'", e.kind));
             }
         }
         for w in &self.wedges {
@@ -385,7 +404,7 @@ fn items_in(level: &Level, grid: &Grid, reach: &[bool]) -> BTreeSet<String> {
         items.insert("lever".to_string());
     }
     for (n, e) in p.enemies.iter().enumerate() {
-        if let Some((ix, iz)) = grid.cell_of(e[0], e[2]) {
+        if let Some((ix, iz)) = grid.cell_of(e.pos[0], e.pos[2]) {
             if reach[grid.idx(ix, iz)] {
                 items.insert(format!("enemy:{n}"));
             }
@@ -447,7 +466,16 @@ mod tests {
         assert_eq!(l.name, "slice");
         assert!(l.solids.len() > 15 && l.wedges.len() == 2);
         assert_eq!(l.props.chests.len(), 2);
-        assert_eq!(l.props.enemies.len(), 3);
+        assert_eq!(l.props.enemies.len(), 5);
+        let kinds: Vec<&str> = l.props.enemies.iter().map(|e| e.kind.as_str()).collect();
+        assert_eq!(kinds, ["guardian", "guardian", "guardian", "sentinel", "brute"]);
+    }
+
+    #[test]
+    fn unknown_enemy_kind_is_rejected() {
+        let mut l = slice();
+        l.props.enemies[0].kind = "drago".into();
+        assert!(l.check_structure().unwrap_err().contains("tipo sconosciuto"));
     }
 
     #[test]
@@ -497,11 +525,12 @@ mod tests {
     #[test]
     fn items_unlock_in_the_intended_order() {
         let a = analyze(&slice());
-        for always in ["shrine", "stone", "gate_hint", "chest:lantern", "enemy:0", "enemy:1", "enemy:2"] {
+        for always in ["shrine", "stone", "gate_hint", "chest:lantern", "enemy:0", "enemy:1", "enemy:2", "enemy:3"] {
             assert_eq!(a.first_stage_with(always), Some(0), "{always} deve essere raggiungibile subito");
         }
         assert_eq!(a.first_stage_with("chest:heart"), Some(1), "il cuore richiede la lanterna");
         assert_eq!(a.first_stage_with("lever"), Some(1), "la leva richiede la lanterna");
+        assert_eq!(a.first_stage_with("enemy:4"), Some(1), "il bruto sta sulla terrazza: richiede la lanterna");
         // Nessun oggetto e' irraggiungibile alla fine.
         let all: Vec<String> = ["shrine", "stone", "gate_hint", "chest:lantern", "chest:heart", "lever"]
             .iter()
@@ -608,7 +637,7 @@ mod tests {
             on_floor(&format!("chest {}", c.id), c.pos);
         }
         for (n, e) in l.props.enemies.iter().enumerate() {
-            on_floor(&format!("enemy {n}"), *e);
+            on_floor(&format!("enemy {n}"), e.pos);
         }
     }
 }

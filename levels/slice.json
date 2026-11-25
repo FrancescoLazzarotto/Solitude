@@ -46,9 +46,11 @@
     "lever": { "pos": [8.0, 0.0, -10.5], "radius": 1.8, "grants": "lever" },
     "bridge": { "min": [-1, 1.7, -15.2], "max": [1, 2.0, -11.8], "requires": "lantern" },
     "enemies": [
-      [5.0, 0.05, -1.0],
-      [3.5, 2.05, -10.0],
-      [-0.5, 2.05, -10.8]
+      { "pos": [5.0, 0.05, -1.0],   "kind": "guardian" },
+      { "pos": [3.5, 2.05, -10.0],  "kind": "guardian" },
+      { "pos": [-0.5, 2.05, -10.8], "kind": "guardian" },
+      { "pos": [5.0, 2.05, -9.6],   "kind": "sentinel" },
+      { "pos": [-3.0, 2.05, -17.0], "kind": "brute" }
     ]
   }
 }
