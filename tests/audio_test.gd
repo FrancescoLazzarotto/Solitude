@@ -40,7 +40,7 @@ func _initialize() -> void:
 	check("versione dell'estensione", str(n.version()).begins_with("carto "), str(n.version()))
 	check("frequenza di campionamento 44100", n.sample_rate() == 44100)
 	var names: PackedStringArray = n.sfx_names()
-	check("26 effetti disponibili", names.size() == 26, str(names.size()))
+	check("28 effetti disponibili", names.size() == 28, str(names.size()))
 	var swing: AudioStreamWAV = n.render_sfx("swing", 1)
 	check("render_sfx ritorna un AudioStreamWAV mono 16 bit", swing != null and not swing.stereo and swing.format == AudioStreamWAV.FORMAT_16_BITS and swing.mix_rate == 44100)
 	check("i dati sono non vuoti e coerenti", swing.data.size() > 2000 and swing.data.size() % 2 == 0, str(swing.data.size()))
@@ -48,7 +48,7 @@ func _initialize() -> void:
 	var t0 := Time.get_ticks_msec()
 	var bank: Dictionary = n.render_sfx_bank(7)
 	var bank_ms := Time.get_ticks_msec() - t0
-	check("il banco contiene tutti i 26 suoni", bank.size() == 26, "in %d ms" % bank_ms)
+	check("il banco contiene tutti i 28 suoni", bank.size() == 28, "in %d ms" % bank_ms)
 	var all_ok := true
 	for k: String in bank:
 		var s: AudioStreamWAV = bank[k]
@@ -70,7 +70,7 @@ func _initialize() -> void:
 		spins += 1
 	check("il rendering in background (thread di Rust) termina", bg.is_render_done(), "%d frame di attesa" % spins)
 	var res: Dictionary = bg.take_render()
-	check("risultato: 26 suoni + musica stereo di 4 s", res.get("sfx", {}).size() == 26 and res.get("music", PackedByteArray()).size() == 4 * 44100 * 4)
+	check("risultato: 28 suoni + musica stereo di 4 s", res.get("sfx", {}).size() == 28 and res.get("music", PackedByteArray()).size() == 4 * 44100 * 4)
 	check("il risultato si ritira una volta sola", bg.take_render().is_empty())
 	var again: Dictionary = n.render_sfx_bank_pcm(5)
 	check("il rendering in background e' identico a quello sincrono (deterministico)", again["swing"] == res["sfx"]["swing"] and again["lever"] == res["sfx"]["lever"])
