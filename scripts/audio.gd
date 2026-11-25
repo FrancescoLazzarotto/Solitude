@@ -15,6 +15,9 @@ var available := false
 ## Quante volte e' stato richiesto ogni suono (utile ai test, anche se l'audio non e' pronto).
 var stats: Dictionary = {}
 var load_ms := 0
+## Quanto ha impiegato il thread principale ad accogliere i suoni (e' l'unico costo che il giocatore sente).
+var arrival_ms := 0.0
+var arrival_take_ms := 0.0
 
 var _native: RefCounted
 var _bank: Dictionary = {}
@@ -64,7 +67,9 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if _native == null or not _native.is_render_done():
 		return
+	var t0 := Time.get_ticks_usec()
 	var result: Dictionary = _native.take_render()
+	var t_take := Time.get_ticks_usec() - t0
 	set_process(false)
 	if result.is_empty():
 		push_warning("Audio: rendering fallito, il gioco resta muto.")
@@ -76,6 +81,8 @@ func _process(_delta: float) -> void:
 	load_ms = int(result["ms"])
 	available = true
 	_start_music()
+	arrival_ms = (Time.get_ticks_usec() - t0) / 1000.0
+	arrival_take_ms = t_take / 1000.0
 	loaded.emit()
 
 
