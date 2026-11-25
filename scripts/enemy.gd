@@ -194,6 +194,8 @@ func take_damage(amount: int, from_pos: Vector3) -> void:
 	if away.length_squared() < 0.001:
 		away = Vector3.BACK
 	velocity = away.normalized() * KNOCKBACK
+	Fx.burst(global_position + Vector3(0, 0.7, 0), Color(1.0, 0.75, 0.4), 12)
+	Fx.add_trauma(0.22)
 	if hp <= 0:
 		_die()
 		return
@@ -205,6 +207,8 @@ func _die() -> void:
 	alive = false
 	state = State.DEAD
 	Audio.play(&"enemy_die", global_position)
+	Fx.burst(global_position + Vector3(0, 0.6, 0), Color(1.0, 0.35, 0.25), 26, 1.3)
+	Fx.add_trauma(0.35)
 	_warn.visible = false
 	_col.set_deferred("disabled", true)
 	var tw := create_tween()

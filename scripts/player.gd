@@ -6,7 +6,7 @@ signal fell
 signal stats_changed
 signal hit_landed
 
-enum State { MOVE, ATTACK, ROLL, HURT, DEAD }
+enum State { MOVE, ATTACK, ROLL, HURT, DEAD, DRINK }
 
 # ---------------------------------------------------------------------------
 # VALORI DI "FEELING": cambiali per modificare la sensazione di gioco.
@@ -46,12 +46,17 @@ const FALL_Y := -2.5
 const SAFE_SAMPLE_INTERVAL := 0.1
 const SAFE_HISTORY := 8
 const SWORD_REST := Vector3(-50.0, 15.0, 0.0)
+const FLASK_HEAL := 2               ## cuori curati da una fiaschetta
+const DRINK_TIME := 0.7            ## tempo in cui si e' vulnerabili mentre si beve
+const DRINK_MOVE_FACTOR := 0.3     ## si puo' camminare piano mentre si beve
 const STEP_DISTANCE := 1.9         ## metri percorsi tra un passo e il successivo
 const STEP_SOUNDS: Array[StringName] = [&"step", &"step2", &"step3", &"step4"]
 
 var max_hp := 4
 var hp := 4
 var max_stamina := 100.0
+var flasks := 3
+var max_flasks := 3
 var stamina := 100.0
 var state: State = State.MOVE
 var facing := Vector3(1.0, 0.0, 1.0).normalized()
@@ -156,6 +161,8 @@ func _physics_process(delta: float) -> void:
 			_tick_roll(delta)
 		State.HURT:
 			_tick_hurt(delta)
+		State.DRINK:
+			_tick_drink(delta)
 
 	_apply_gravity(delta)
 	move_and_slide()
@@ -181,6 +188,9 @@ func _move_input() -> Vector3:
 func _read_input_buffer() -> void:
 	if Input.is_action_just_pressed("attack"):
 		_buffer_action = &"attack"
+		_buffer_time = INPUT_BUFFER
+	elif Input.is_action_just_pressed("heal"):
+		_buffer_action = &"heal"
 		_buffer_time = INPUT_BUFFER
 	elif Input.is_action_just_pressed("roll"):
 		_buffer_action = &"roll"
@@ -208,7 +218,9 @@ func _tick_move(delta: float) -> void:
 	if moving:
 		facing = dir.normalized()
 		_footsteps(delta)
-	if _buffer_time > 0.0 and stamina > 0.0:
+	if _buffer_time > 0.0 and _buffer_action == &"heal":
+		_start_drink()
+	elif _buffer_time > 0.0 and stamina > 0.0:
 		if _buffer_action == &"roll":
 			_start_roll()
 		elif _buffer_action == &"attack":
@@ -288,6 +300,32 @@ func _tick_attack(delta: float) -> void:
 		_state_time = 0.0
 
 
+func _start_drink() -> void:
+	_buffer_time = 0.0
+	if flasks <= 0 or hp >= max_hp:
+		return
+	state = State.DRINK
+	_state_time = 0.0
+	Audio.play(&"drink", global_position)
+	stats_changed.emit()
+
+
+func _tick_drink(delta: float) -> void:
+	# Si cammina piano e si e' vulnerabili: bere in mezzo a un combattimento e' una scommessa.
+	var dir := _move_input()
+	var target := dir * WALK_SPEED * DRINK_MOVE_FACTOR
+	velocity.x = move_toward(velocity.x, target.x, ACCEL * delta)
+	velocity.z = move_toward(velocity.z, target.z, ACCEL * delta)
+	if _state_time >= DRINK_TIME:
+		flasks -= 1
+		hp = mini(max_hp, hp + FLASK_HEAL)
+		Audio.play(&"heal", global_position, -3.0)
+		Fx.burst(global_position + Vector3(0, 0.9, 0), Color(0.5, 1.0, 0.6), 16, 0.7)
+		state = State.MOVE
+		_state_time = 0.0
+		stats_changed.emit()
+
+
 func _tick_hurt(delta: float) -> void:
 	velocity.x = move_toward(velocity.x, 0.0, FRICTION * 0.5 * delta)
 	velocity.z = move_toward(velocity.z, 0.0, FRICTION * 0.5 * delta)
@@ -358,6 +396,8 @@ func take_damage(amount: int, from_pos: Vector3) -> bool:
 	_invuln_time = HURT_INVULN
 	_flash()
 	Audio.play(&"hit_player", global_position)
+	Fx.burst(global_position + Vector3(0, 0.8, 0), Color(1.0, 0.3, 0.3), 16)
+	Fx.add_trauma(0.5)
 	stats_changed.emit()
 	if hp <= 0:
 		_die()
@@ -398,6 +438,7 @@ func teleport_to(pos: Vector3) -> void:
 
 func heal_full() -> void:
 	hp = max_hp
+	flasks = max_flasks
 	stamina = max_stamina
 	stats_changed.emit()
 

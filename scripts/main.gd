@@ -84,6 +84,7 @@ func _setup_input() -> void:
 	_add_action(&"interact", [KEY_E], [JOY_BUTTON_A], [])
 	_add_action(&"attack", [KEY_J], [JOY_BUTTON_X], [], [MOUSE_BUTTON_LEFT])
 	_add_action(&"roll", [KEY_SPACE, KEY_SHIFT], [JOY_BUTTON_B], [])
+	_add_action(&"heal", [KEY_Q], [JOY_BUTTON_RIGHT_SHOULDER], [])
 	_add_action(&"toggle_notebook", [KEY_TAB], [JOY_BUTTON_Y], [])
 
 
@@ -280,6 +281,7 @@ func _open_chest_visual(it: Node3D) -> void:
 	tw2.tween_property(orb, "scale", Vector3(0.01, 0.01, 0.01), 0.5)
 	tw2.tween_callback(orb.queue_free)
 	it.set("enabled", false)
+	Fx.burst(root.global_position + Vector3(0, 0.7, 0), Color(1.0, 0.9, 0.5), 22, 0.9)
 	(root.get_node("ChestLight") as OmniLight3D).light_energy = 0.4
 
 
@@ -406,6 +408,7 @@ func _build_ui() -> void:
 func _sync_hud() -> void:
 	hud.set_hp(player.hp, player.max_hp)
 	hud.set_stamina(player.stamina, player.max_stamina)
+	hud.set_flasks(player.flasks, player.max_flasks)
 
 
 # ===========================================================================
@@ -415,7 +418,7 @@ func _sync_hud() -> void:
 func _process(delta: float) -> void:
 	var target_pos := player.get_global_transform_interpolated().origin + Vector3(0, 0.8, 0)
 	_cam_focus = _cam_focus.lerp(target_pos, 1.0 - exp(-CAMERA_FOLLOW * delta))
-	camera.global_position = _cam_focus + _cam_offset
+	camera.global_position = _cam_focus + _cam_offset + Fx.shake_offset()
 	Audio.set_listener(player.global_position + Vector3(0, 1.0, 0), deg_to_rad(CAMERA_YAW_DEG))
 	_update_interaction()
 
@@ -485,6 +488,7 @@ func use_shrine() -> void:
 	player.heal_full()
 	hud.toast("Santuario: salute ripristinata.\nI nemici sono tornati. Se cadi, ripartirai da qui.", 4.5)
 	Audio.play(&"shrine_rest", _shrine_pos)
+	Fx.burst(_shrine_pos + Vector3(0, 1.9, 0), Color(0.4, 1.0, 0.9), 22, 0.8)
 	Audio.play(&"heal", player.global_position, -4.0)
 	var tw := create_tween()
 	tw.tween_property(_shrine_light, "light_energy", 5.0, 0.2)

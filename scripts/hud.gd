@@ -12,6 +12,8 @@ var _toast: Label
 var _fade: ColorRect
 var _toast_tween: Tween
 var _max_hearts := 0
+var _flasks: HBoxContainer
+var _max_flasks := 0
 
 
 func _ready() -> void:
@@ -33,8 +35,13 @@ func _ready() -> void:
 	_stamina_fill.size = Vector2(216.0, 8.0)
 	_stamina_bg.add_child(_stamina_fill)
 
+	_flasks = HBoxContainer.new()
+	_flasks.position = Vector2(16.0, 64.0)
+	_flasks.add_theme_constant_override("separation", 5)
+	add_child(_flasks)
+
 	var help := Label.new()
-	help.text = "WASD muovi  ·  J / click attacca  ·  Spazio rotola  ·  E interagisci  ·  Tab taccuino"
+	help.text = "WASD muovi  ·  J / click attacca  ·  Spazio rotola  ·  Q cura  ·  E interagisci  ·  Tab taccuino"
 	help.position = Vector2(16.0, 692.0)
 	help.modulate = Color(1, 1, 1, 0.45)
 	help.add_theme_font_size_override("font_size", 14)
@@ -84,6 +91,21 @@ func set_hp(current: int, maximum: int) -> void:
 		var heart := _hearts.get_child(i) as ColorRect
 		if heart != null:
 			heart.color = Color(0.9, 0.25, 0.3) if i < current else Color(0.25, 0.1, 0.12, 0.8)
+
+
+func set_flasks(current: int, maximum: int) -> void:
+	if maximum != _max_flasks:
+		_max_flasks = maximum
+		for c in _flasks.get_children():
+			c.queue_free()
+		for i in range(maximum):
+			var r := ColorRect.new()
+			r.custom_minimum_size = Vector2(12, 16)
+			_flasks.add_child(r)
+	for i in range(_flasks.get_child_count()):
+		var f := _flasks.get_child(i) as ColorRect
+		if f != null:
+			f.color = Color(0.35, 0.9, 0.75) if i < current else Color(0.1, 0.25, 0.22, 0.8)
 
 
 func set_stamina(current: float, maximum: float) -> void:
