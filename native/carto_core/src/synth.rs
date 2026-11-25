@@ -11,7 +11,7 @@ pub const SFX_NAMES: &[&str] = &[
     "swing", "swing2", "hit_enemy", "hit_player", "roll", "step", "step2", "step3", "step4", "blip",
     "chest_open", "item_get", "shrine_rest", "lever", "gate_open", "bridge_reveal", "enemy_windup",
     "enemy_lunge", "enemy_hurt", "enemy_die", "fall", "death", "page_open", "page_close", "lantern_on",
-    "heal",
+    "heal", "drink", "shot",
 ];
 
 /// Ritorna l'audio mono dell'effetto (campioni f32 in [-1, 1]), o None se il nome non esiste.
@@ -43,6 +43,8 @@ pub fn render_sfx(name: &str, seed: u64) -> Option<Vec<f32>> {
         "page_close" => (page(seed, true), 0.4, 0.03),
         "lantern_on" => (lantern_on(), 0.7, 0.2),
         "heal" => (heal(), 0.6, 0.2),
+        "drink" => (drink(seed), 0.45, 0.05),
+        "shot" => (shot(seed), 0.55, 0.03),
         _ => return None,
     };
     remove_dc(&mut buf);
@@ -485,6 +487,49 @@ fn heal() -> Vec<f32> {
         mix_into(&mut out, &bell, secs(0.09 * k as f32), 1.0);
     }
     reverb_mono(&out, 0.7, 0.4, 0.4, 0.8)
+}
+
+/// Tre sorsi: gorgoglii che salgono di tono, con un soffio d'aria.
+fn drink(seed: u64) -> Vec<f32> {
+    let mut rng = Rng::new(seed ^ 0xD21);
+    let n = secs(0.7);
+    let mut out = make(n);
+    let mut f = Svf::new(900.0, 1.2);
+    let mut phase = 0.0f32;
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / SR;
+        let mut gulp = 0.0;
+        for k in 0..3 {
+            let start = 0.08 + 0.2 * k as f32;
+            if t >= start {
+                let lt = t - start;
+                let hz = exp_lerp(240.0 + 30.0 * k as f32, 560.0 + 60.0 * k as f32, (lt / 0.09).min(1.0));
+                phase += hz / SR;
+                gulp += (phase * TAU).sin() * decay(lt, 0.05) * smooth(lt / 0.005);
+            }
+        }
+        let air = f.process(rng.signed()).band * 0.12 * smooth(t / 0.2) * (1.0 - smooth((t - 0.5) / 0.2));
+        *s = gulp * 0.7 + air;
+    }
+    reverb_mono(&out, 0.4, 0.6, 0.15, 0.2)
+}
+
+/// Sparo di una sentinella: zap discendente con uno scatto di rumore.
+fn shot(seed: u64) -> Vec<f32> {
+    let mut rng = Rng::new(seed ^ 0x5407);
+    let n = secs(0.25);
+    let mut out = make(n);
+    let mut o = Osc::new(0.0);
+    let mut f = Svf::new(3000.0, 1.4);
+    for (i, s) in out.iter_mut().enumerate() {
+        let t = i as f32 / SR;
+        let hz = exp_lerp(1500.0, 260.0, (t / 0.2).min(1.0));
+        f.set(hz * 3.0, 1.4);
+        let zap = f.process(o.saw(hz)).low * decay(t, 0.09);
+        let click = rng.signed() * decay(t, 0.004) * 0.6;
+        *s = zap + click;
+    }
+    out
 }
 
 // ---------------------------------------------------------------------------
