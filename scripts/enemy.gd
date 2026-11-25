@@ -29,6 +29,12 @@ const KINDS := {
 	},
 }
 const GRAVITY := 25.0
+## Dislivello massimo per considerare il giocatore "sullo stesso livello". Deve stare ben sotto i 2 m
+## dei gradini del livello (altopiano e terrazza): chi sta sotto non va ingaggiato, ma sulla meta' alta
+## di una rampa si'.
+const LEVEL_DY := 1.2
+## Sotto questa quota un nemico e' caduto nel vuoto.
+const FALL_Y := -2.5
 const SENTINEL_RANGE := 11.0
 const PROJECTILE_SPEED := 8.5
 
@@ -44,6 +50,7 @@ var spawn_position := Vector3.ZERO
 var _cfg: Dictionary
 var _t := 0.0
 var _lock_dir := Vector3.FORWARD
+var _lock_aim := Vector3.FORWARD   ## direzione di tiro in 3D (verso il petto del bersaglio)
 var _hit_done := false
 var _visual: Node3D
 var _model: Node3D
@@ -162,6 +169,9 @@ func _build_sentinel_model() -> void:
 func _physics_process(delta: float) -> void:
 	if not alive:
 		return
+	if global_position.y < FALL_Y:
+		_die()   # spinto o caduto nel vuoto: il santuario lo ripristina come tutti gli altri
+		return
 	_t += delta
 	if is_on_floor():
 		velocity.y = maxf(velocity.y, -1.0)
@@ -174,7 +184,7 @@ func _physics_process(delta: float) -> void:
 		to = target.global_position - global_position
 		var dy := to.y
 		to.y = 0.0
-		dist = to.length() if absf(dy) < 2.2 else INF
+		dist = to.length() if absf(dy) < LEVEL_DY else INF
 	var dir := to.normalized() if dist < INF and dist > 0.001 else Vector3.ZERO
 	var sentinel := kind == "sentinel"
 
@@ -204,6 +214,9 @@ func _physics_process(delta: float) -> void:
 			if _t < windup * 0.7 and dir != Vector3.ZERO:
 				_face(dir, delta)
 				_lock_dir = dir
+				if sentinel:
+					# Mira in 3D: dal "muso" al petto del bersaglio, cosi' funziona anche su rampe e dislivelli.
+					_lock_aim = (target.global_position + Vector3(0, 0.8, 0) - (global_position + Vector3(0, 0.9, 0))).normalized()
 			var k := clampf(_t / windup, 0.0, 1.0)
 			_eye_mat.emission_energy_multiplier = lerpf(2.0, 9.0, k)
 			_visual.scale = Vector3(1.0, lerpf(1.0, 0.8, k), 1.0) if not sentinel else Vector3.ONE
@@ -280,12 +293,12 @@ func _update_aim_line() -> void:
 func _fire() -> void:
 	var shot := Node3D.new()
 	shot.set_script(ProjectileScript)
-	shot.direction = _lock_dir
+	shot.direction = _lock_aim
 	shot.damage = int(_cfg["damage"])
 	shot.target = target
 	shot.shooter_rid = get_rid()
 	get_parent().add_child(shot)
-	shot.global_position = global_position + Vector3(0, 0.9, 0) + _lock_dir * 0.6
+	shot.global_position = global_position + Vector3(0, 0.9, 0) + _lock_aim * 0.6
 	Audio.play(&"shot", global_position)
 	Fx.burst(shot.global_position, Color(1.0, 0.6, 0.3), 8, 0.6)
 
