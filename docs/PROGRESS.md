@@ -6,6 +6,7 @@ Questo file e' la memoria del progetto: cosa esiste, cosa e' verificato, quali n
 AMD Ryzen 5 3500U (4C/8T), Radeon Vega 8 (integrata), 5.9 GB RAM, ~9 GB di disco libero.
 - Un `rustc` e' gia' crashato per memoria esaurita compilando `godot-core` con altro in esecuzione: build con `jobs = 2` e Godot chiuso.
 - Prima compilazione completa (dipendenze di gdext): ~6 minuti. Poi `tools/build.ps1` impiega ~5 secondi.
+- **Profilo release (LTO thin)**: `tools/build.ps1 -Profile release` compila in 5 min 37 s senza esaurire la RAM (jobs=2, Godot chiuso); DLL da ~4.1 MB; tutti i test passano anche con la DLL release (verificato). In gioco il rendering audio in background dura 0.9-2.9 s a seconda del carico (ma 0.78 s in isolamento) e l'accoglienza sul thread principale 50-70 ms: release e fast sono equivalenti perche' il tempo e' dominato dalla competizione con il rendering, non dal codice. Dopo aver copiato la DLL attendere qualche secondo prima di misurare: OneDrive la sincronizza e falsa le misure (visti 300 ms spuri).
 - La cartella di build Cargo sta fuori da OneDrive (`%LOCALAPPDATA%\cartografo-build\target`, impostata dagli script).
 
 ## Prestazioni (1280x720, vsync OFF, percorso scriptato di 3 giri, mediana di 5 giri)
